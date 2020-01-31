@@ -1,10 +1,6 @@
 #include <iostream>
-#include <boost/noncopyable.hpp>
-#include <boost/circular_buffer.hpp>
 #include <memory>
-#include <reactor/task_channel.hh>
 #include <reactor/task.hh>
-#include <reactor/task_looper.hh>
 #include <reactor/flow.hh>
 
 #include <hw/cpu.hh>
@@ -13,77 +9,35 @@
 #include <poller/poller.hh>
 #include <net/listener.hh>
 #include <net/packet_buffer.hh>
-#include <net/session.hh>
+#include <net/tcp_session.hh>
 #include <threading/reactor.hh>
-
+#include <mqtt/mqtt_session.hh>
 #include <reactor/global_task_schedule_center.hh>
+#include <timer/timer_set.hh>
+#include <spdlog/spdlog.h>
+#include <libaio.h>
 
-struct bbbb:boost::noncopyable{
-    char* szbuf;
-public:
-    bbbb():szbuf(new char[128]){
-        sprintf(szbuf,"000");
-    }
-};
-
-struct nocpy:boost::noncopyable{
-    char* szbuf;
-    bbbb b;
-public:
-    void out(){
-        std::cout<<szbuf<<std::endl;
-    }
-    nocpy(const char* sz):szbuf(new char[128]){
-        sprintf(szbuf,sz);
-    }
-    nocpy(const nocpy&& n):szbuf(n.szbuf){
-       // n.szbuf= nullptr;
+void install_sigsegv_handler(){
+    static utils::spinlock lock;
+    struct sigaction sa;
+    sa.sa_sigaction = [](int sig, siginfo_t *info, void *p) {
+        std::lock_guard<utils::spinlock> g(lock);
+        std::cout<<"SIGSEGV error"<<std::endl;
+        throw std::system_error();
     };
-    nocpy(nocpy&& n):szbuf(n.szbuf){
-        n.szbuf= nullptr;
-    };
-    virtual ~nocpy(){
-        delete(szbuf);
+    sigfillset(&sa.sa_mask);
+    sa.sa_flags = SA_SIGINFO | SA_ONSTACK;
+    auto r = ::sigaction(SIGSEGV, &sa, nullptr);
+    if(r == -1){
+        throw std::system_error();
     }
-};
-
-long getCurrentTime()
-{
-    struct timeval tv;
-    gettimeofday(&tv,NULL);
-    return tv.tv_sec * 1000 + tv.tv_usec / 1000;
-}
-void yyy(){
-
 }
 
 
-void run(net::listener& l){
-    l.wait_connect()
-            .and_then([&l](net::session_data&& session_d){
-                net::session* s=new net::session(session_d);
-                s->start_at(hw::cpu_core::_03)
-                        .wait_packet()
-                        .and_then([s](net::linear_ringbuffer_st* pkt){
-                            std::cout<<"received packet :"<<pkt->read_head()<<std::endl;
-                            size_t len=pkt->size();
-                            return s->send_data(pkt->read_head(),pkt->size())
-                                    .and_then([pkt,len](){
-                                        std::cout<<"sended packet"<<std::endl;
-                                        pkt->consume(len);
-                                        return 1;
-                                    });
-                        })
-                        .and_then([](int&& a){
-                            std::cout<<"a="<<a<<std::endl;
-                            return ++a;
-                        })
-                        .submit();
-            })
-            .submit();
-}
 template <typename ..._T>
 void init_all(){
+    install_sigsegv_handler();
+    timer::init_all_timer_set(hw::the_cpu_count);
     reactor::init_global_task_schedule_center<_T...>(hw::the_cpu_count);
     poller::init_all_poller(hw::the_cpu_count);
 
@@ -92,84 +46,88 @@ void init_all(){
     }
 
 }
-void test2(){
 
+#pragma clang diagnostic push
+#pragma ide diagnostic ignored "InfiniteRecursion"
+template<uint16_t _PORT_>
+void run_mqtt(net::listener<_PORT_>& l){
+    net::wait_connect(l)
+            .then([&l](net::session_data &&session_d) {
+                net::tcp_session *s = new net::tcp_session(session_d);
+                mqtt::wait_connect(s->start_at(hw::cpu_core::_01))
+                        .then([s](mqtt::mqtt_parse_state_code &&code) {
+                            switch (code) {
+                                case mqtt::mqtt_parse_state_code::ok:
+                                default:
+                                    return;
+                            }
+                        })
+                        .submit();
+                run_mqtt(l);
+            })
+            .submit();
 }
+#pragma clang diagnostic pop
+
+
+void
+aio_cb(io_context_t ctx, struct iocb *iocb, long res, long res2){}
+
+
 int main() {
-    hw::pin_this_thread(2);
+
+
+    hw::pin_this_thread(0);
     sleep(1);
-    hw::the_cpu_count=3;
+    hw::the_cpu_count=1;
     init_all
             <
                     reactor::sortable_task<utils::noncopyable_function<void()>,1>,
                     reactor::sortable_task<utils::noncopyable_function<void()>,2>
             >();
-    net::listener l=net::listener(9022);
     sleep(1);
-    run(l.start_at(hw::cpu_core::_02));
 
-    reactor::make_flow([]() { return 80; }, hw::cpu_core::_01)
-            .and_then([](int&& x){
-                int a=456;
-                std::cout<<x<<std::endl;
-                return "aaa";
+
+    int fd=open("logs/t.txt",O_RDWR|O_CREAT|O_APPEND,0664);
+    int efd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
+    io_context_t ctx;
+    io_setup(1024,&ctx);
+    struct iocb *io = (struct iocb *)malloc(sizeof(struct iocb));
+    char* sz="12345";
+    io_prep_pwrite(io,fd,sz,6,0);
+    io_set_eventfd(io,efd);
+    io_set_callback(io,[](io_context_t ctx, struct iocb *iocb, long res, long res2){
+        std::cout << "00000" << std::endl;
+    });
+    io_submit(ctx,1,&io);
+
+    struct io_event events[1024];
+
+    int num=io_getevents(ctx,1,1024,events, nullptr);
+    for (int i = 0; i < num; i++) {
+        auto cb = (io_callback_t) events[i].data;
+        struct iocb *io = events[i].obj;
+
+        printf("events[%d].data = %x, res = %d, res2 = %d n", i, cb, events[i].res, events[i].res2);
+        cb(ctx, io, events[i].res, events[i].res2);
+    }
+
+
+
+    run_mqtt(net::listener<9022>::instance.start_at(hw::cpu_core::_01));
+    reactor::make_flow([]() {
+        return 10;
+    })
+            .then([](int &&i) {
+                std::cout << i << std::endl;
+                return ++i;
             })
-            .and_then([](std::string&& s){
-                std::cout<<s<<std::endl;
-                return reactor::make_flow([]() {
-                    std::cout << "void:" << std::endl;
-                    return 10;
-                }, hw::cpu_core::_02)
-                        .and_then([](int && a){
-                            std::cout<<a<<std::endl;
-                            return;
-                        })
-                        .and_then([](){
-                            std::cout<<"00000"<<std::endl;
-                            return;
-                        });
+            .then([](int &&i) {
+                std::cout << i << std::endl;
+                return ++i;
             })
-            .and_then([](){
-                std::cout<<"112233"<<std::endl;
-                return;
-            },hw::cpu_core::_03)
             .submit();
 
-    /*
-
-    reactor::make_flow([](){
-        return 10;
-    })->at(hw::cpu_core::_03)
-            ->and_then([](int&& a){
-                std::cout<<"a="<<a<<std::endl;
-                return ++a;
-            })
-            ->and_then([](int&& a){
-                std::cout<<"a="<<a<<std::endl;
-                return;
-            })
-            ->and_then([](){
-                int a=123;
-                std::cout<<"a="<<a<<std::endl;
-                return reactor::make_flow([a=a]()mutable{
-                    std::cout<<"a="<<a<<std::endl;
-                    return ++a;
-                })->at(hw::cpu_core::_02)
-                        ->and_then([](int&& a){
-                            std::cout<<"a="<<a<<std::endl;
-                            return ++a;
-                        })
-                        ->and_then([](int&& a){
-                            std::cout<<"a="<<a<<std::endl;
-                            return ++a;
-                        });
-            })
-            ->and_then([](int&& a){
-                std::cout<<"a="<<a<<std::endl;
-                return ++a;
-            })
-            ->submit();
-*/
     sleep(10000);
     return 0;
 }

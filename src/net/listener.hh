@@ -60,15 +60,15 @@ namespace reactor{
 }
 
 namespace net{
-
-    class listener : public reactor::task_schedule_center<net::connection_data>{
+    template <uint16_t _PORT_>
+    class
+    listener final : public reactor::task_schedule_center<net::connection_data>{
     private:
         int listen_fd;
         struct sockaddr_in server_addr;
-        uint16_t port;
-        std::function<void(const epoll_event& e)> _acceptor;
     private:
-        void accept(const epoll_event& e){
+        void
+        accept(const epoll_event& e){
             sockaddr addr;
             socklen_t len= sizeof(addr);
             int session_fd=accept4(this->listen_fd,&addr,&len,SOCK_NONBLOCK | SOCK_CLOEXEC);
@@ -82,21 +82,23 @@ namespace net{
                 }
             }
         }
-    public:
-        explicit listener(uint16_t _port)
-                :port(_port)
-                ,reactor::task_schedule_center<net::connection_data>(){
-            _acceptor=std::bind(&listener::accept,this,std::placeholders::_1);
+        explicit
+        listener()
+                :reactor::task_schedule_center<net::connection_data>(){
         };
-        void stop(){
+        void
+        stop(){
             close(listen_fd);
         }
-        listener& start_at(hw::cpu_core cpu){
+    public:
+        static listener<_PORT_> instance;
+        listener<_PORT_>&
+        start_at(hw::cpu_core cpu){
             listen_fd = socket(AF_INET, SOCK_STREAM, 0);
             bzero(&server_addr, sizeof(server_addr));
             server_addr.sin_family         = AF_INET;
             server_addr.sin_addr.s_addr    = htonl(INADDR_ANY);
-            server_addr.sin_port           = htons(port);
+            server_addr.sin_port           = htons(_PORT_);
 
             bind(listen_fd, (struct sockaddr *)&server_addr, sizeof(server_addr));
             fcntl(listen_fd, F_SETFL, fcntl(listen_fd, F_GETFL)|O_NONBLOCK);
@@ -104,22 +106,38 @@ namespace net{
             int optval;
             optval=1;
             setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR,
-                         &optval, static_cast<socklen_t>(sizeof optval));
+                       &optval, static_cast<socklen_t>(sizeof optval));
             optval=1;
             setsockopt(listen_fd, SOL_SOCKET, SO_REUSEPORT,
                        &optval, static_cast<socklen_t>(sizeof optval));
 
-            listen(listen_fd, 1024);
-            poller::_all_pollers[static_cast<int>(cpu)]->add_event(listen_fd,EPOLLIN|EPOLLET,std::forward<std::function<void(const epoll_event& e)>>(_acceptor));
-            return *this;
-        }
-        auto wait_connect(){
-            return reactor::make_flow<connection_data>
-                    ([](connection_data &&d) {
-                        return session_data(d.session_fd, d.peer_addr);
-                    }, *this);
+            if(0==listen(listen_fd, 1024)){
+                poller::_all_pollers[static_cast<int>(cpu)]->add_event(
+                        listen_fd,
+                        EPOLLIN|EPOLLET,
+                        [this](const epoll_event& e){
+                            accept(e);
+                        });
+                return *this;
+            }
+            else{
+                return *this;
+            }
+
         }
     };
+
+    template <uint16_t _PORT_>
+    listener<_PORT_> listener<_PORT_>::instance;
+
+    template <uint16_t _PORT_>
+    auto
+    wait_connect(listener<_PORT_>& l){
+        return reactor::make_flow<connection_data>
+                ([](connection_data &&d) {
+                    return session_data(d.session_fd, d.peer_addr);
+                }, l);
+    }
 }
 
 #endif //PROJECT_LISTENER_HH

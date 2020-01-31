@@ -30,10 +30,10 @@ namespace reactor{
                 }
                 x.st = state::invalid;
             }
-            any(std::exception_ptr&& e) {
+            any(std::exception_ptr e) {
                 set_exception(std::move(e));
             }
-            void set_exception(std::exception_ptr&& e) {
+            void set_exception(std::exception_ptr e) {
                 new (&ex) std::exception_ptr(std::move(e));
             }
             std::exception_ptr take_exception(){
@@ -51,7 +51,7 @@ namespace reactor{
         bool failed() const noexcept {
             return __builtin_expect(_any.st >= state::exception_min, false);
         }
-        void set_exception(std::exception_ptr&& ex) noexcept {
+        void set_exception(std::exception_ptr ex) noexcept {
             _any.set_exception(std::move(ex));
         }
         std::exception_ptr get_exception() && noexcept {

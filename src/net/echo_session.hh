@@ -9,17 +9,11 @@
 #include <net/listener.hh>
 
 namespace net{
-    class echo_session{
-    public:
-        explicit echo_session(const session_data& session){
-
+    namespace echo{
+        auto
+        wait_one_pkt(){
+            
         }
-        auto wait_recved(){
-
-        }
-        auto wait_writeable(){
-
-        }
-    };
+    }
 }
 #endif //PROJECT_ECHO_SESSION_HH
