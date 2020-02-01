@@ -15,6 +15,8 @@
 #include <poller/poller.hh>
 
 namespace reactor{
+    struct _running_context_type_none_{};
+
     template <typename _V>
     class schedule_able{
     public:

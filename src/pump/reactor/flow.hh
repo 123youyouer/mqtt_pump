@@ -212,9 +212,13 @@ namespace reactor{
                 return this->_prev->submit();
             }
             else{
-                schedule_to<typename schedule_able<_A>::_running_context_type_>::apply(this->_rc_,[this](_A&& a)mutable{
-                    this->active(std::forward<_A>(a));
-                });
+                if constexpr (!boost::hana::equal(
+                        boost::hana::type_c<_running_context_type_none_>,
+                        boost::hana::type_c<typename schedule_able<_A>::_running_context_type_>)){
+                    schedule_to<typename schedule_able<_A>::_running_context_type_>::apply(this->_rc_,[this](_A&& a)mutable{
+                        this->active(std::forward<_A>(a));
+                    });
+                }
             }
         }
 
@@ -234,11 +238,29 @@ namespace reactor{
                         _func(std::forward<_A>(a));
                 }
                 else{
-                    if(this->_next)
-                        build_active_function(std::forward<_A>(a))();
-                    else
+                    if(this->_next){
+                        if constexpr (boost::hana::equal(
+                                boost::hana::type_c<typename schedule_able<_R>::_running_context_type_>,
+                                boost::hana::type_c<hw::cpu_core>
+                        )){
+                            if(hw::get_thread_cpu_id()==this->_next->_rc_){
+                                build_active_function(std::forward<_A>(a))();
+                            }
+                            else{
+                                schedule_to<typename schedule_able<_R>::_running_context_type_>
+                                ::apply(
+                                        this->_next->_rc_,
+                                        build_active_function(std::forward<_A>(a))
+                                );
+                            }
+                        }
+                        else{
+                            build_active_function(std::forward<_A>(a))();
+                        }
+                    }
+                    else{
                         _func(std::forward<_A>(a));
-
+                    }
                 }
             }
             catch (...){
@@ -314,10 +336,29 @@ namespace reactor{
                         _func();
                 }
                 else{
-                    if(this->_next)
-                        build_active_function()();
-                    else
+                    if(this->_next){
+                        if constexpr (boost::hana::equal(
+                                boost::hana::type_c<typename schedule_able<_R>::_running_context_type_>,
+                                boost::hana::type_c<hw::cpu_core>
+                        )){
+                            if(hw::get_thread_cpu_id()==this->_next->_rc_){
+                                build_active_function()();
+                            }
+                            else{
+                                schedule_to<typename schedule_able<_R>::_running_context_type_>
+                                ::apply(
+                                        this->_next->_rc_,
+                                        build_active_function()
+                                );
+                            }
+                        }
+                        else{
+                            build_active_function()();
+                        }
+                    }
+                    else{
                         _func();
+                    }
                 }
             }
             catch (...){

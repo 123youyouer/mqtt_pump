@@ -70,16 +70,15 @@ void run_mqtt(net::listener<_PORT_>& l){
 #pragma clang diagnostic pop
 
 
-void
-aio_cb(io_context_t ctx, struct iocb *iocb, long res, long res2){}
 
 
+#include <async_file/aio_file.hh>
+#include <logger/logger.hh>
 int main() {
-
 
     hw::pin_this_thread(0);
     sleep(1);
-    hw::the_cpu_count=1;
+    hw::the_cpu_count=2;
     init_all
             <
                     reactor::sortable_task<utils::noncopyable_function<void()>,1>,
@@ -87,43 +86,45 @@ int main() {
             >();
     sleep(1);
 
+    logger::default_logger_ptr=new logger::simple_logger;
+    logger::info("it is log {1} {0}",10,11);
 
-    int fd=open("logs/t.txt",O_RDWR|O_CREAT|O_APPEND,0664);
-    int efd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
-    io_context_t ctx;
-    io_setup(1024,&ctx);
-    struct iocb *io = (struct iocb *)malloc(sizeof(struct iocb));
-    char* sz="12345";
-    io_prep_pwrite(io,fd,sz,6,0);
-    io_set_eventfd(io,efd);
-    io_set_callback(io,[](io_context_t ctx, struct iocb *iocb, long res, long res2){
-        std::cout << "00000" << std::endl;
-    });
-    io_submit(ctx,1,&io);
+/*
+    aio::aio_file af("logs/t1.txt");
 
-    struct io_event events[1024];
+    af.start_at(hw::cpu_core::_01);
+    char* sz=new char[6];
+    sprintf(sz,"54321");
 
-    int num=io_getevents(ctx,1,1024,events, nullptr);
-    for (int i = 0; i < num; i++) {
-        auto cb = (io_callback_t) events[i].data;
-        struct iocb *io = events[i].obj;
+    af.wait_write_done(sz,5)
+            .then([](aio::aio_cb_args&& a){
+                std::cout<<a.res1<<" | "<<a.res2<<std::endl;
+            },hw::cpu_core::_02)
+            .submit();
+    char buf[128];
 
-        printf("events[%d].data = %x, res = %d, res2 = %d n", i, cb, events[i].res, events[i].res2);
-        cb(ctx, io, events[i].res, events[i].res2);
-    }
+    af.wait_read_done(buf,127,0)
+            .then([&buf](aio::aio_cb_args&& a){
+                std::cout<<a.res1<<" | "<<a.res2<<std::endl;
+                std::cout<<buf<<std::endl;
+            })
+            .submit();
+
+*/
 
 
 
     run_mqtt(net::listener<9022>::instance.start_at(hw::cpu_core::_01));
     reactor::make_flow([]() {
+        std::cout <<"---------" << static_cast<int>(hw::get_thread_cpu_id()) <<"%%%%%%%%%%%%%" << std::endl;
         return 10;
-    })
+    },hw::cpu_core::_02)
             .then([](int &&i) {
-                std::cout << i << std::endl;
+                std::cout <<"---------" << static_cast<int>(hw::get_thread_cpu_id()) << std::endl;
                 return ++i;
             })
             .then([](int &&i) {
-                std::cout << i << std::endl;
+                std::cout <<"---------" << static_cast<int>(hw::get_thread_cpu_id()) << std::endl;
                 return ++i;
             })
             .submit();
