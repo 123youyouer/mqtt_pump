@@ -42,9 +42,12 @@ namespace reactor{
     };
 }
 namespace aio{
+
+    constexpr const uint32_t max_events=16;
+
     namespace _private{
         thread_local moodycamel::ConcurrentQueue<iocb*> cached_iocbs;
-        thread_local struct io_event aio_events[1024];
+        thread_local struct io_event aio_events[max_events];
     }
 
 
@@ -74,7 +77,7 @@ namespace aio{
     public:
         explicit
         aio_file(const char* path):ctx(){
-            io_setup(1024,&ctx);
+            io_setup(max_events,&ctx);
             _file_fd=open(path,O_RDWR|O_CREAT|O_APPEND,0664);
             _event_fd=eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
             s=path;
@@ -87,8 +90,7 @@ namespace aio{
         }
         void
         on_event(const epoll_event& e){
-            int num=io_getevents(ctx,1,1024,_private::aio_events, nullptr);
-            std::cout<<num<<std::endl;
+            int num=io_getevents(ctx,0,max_events,_private::aio_events, nullptr);
             for (int i = 0; i < num; i++) {
                 if(!_private::aio_events->data){
                     continue;
@@ -100,7 +102,7 @@ namespace aio{
             }
         }
         void
-        start_at(hw::cpu_core cpu){
+        bind_cpu(hw::cpu_core cpu){
             poller::_all_pollers[static_cast<int>(cpu)]
                     ->add_event(
                             _event_fd,
@@ -111,12 +113,11 @@ namespace aio{
         }
         void
         write_no_res(void* buf,int len,int offset=0){
-            iocb* io=new iocb;
-            io_prep_pwrite(io,_file_fd,buf, len,offset);
-            io_set_eventfd(io,_event_fd);
-            io->data=nullptr;
-            io_submit(ctx,1,&io);
-            delete io;
+            iocb io;
+            io_prep_pwrite(&io,_file_fd,buf, len,offset);
+            io.data=nullptr;
+            struct iocb* cmds[1] = { &io };
+            io_submit(ctx,1,cmds);
         }
 
         auto

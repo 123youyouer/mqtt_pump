@@ -15,6 +15,7 @@
 #include <bits/types/siginfo_t.h>
 #include <mutex>
 #include <csignal>
+#include <logger/logger.hh>
 
 namespace threading{
     template <typename ..._TASK_TYPE>
@@ -26,20 +27,21 @@ namespace threading{
             reactor::run_task_in_cpu<_TASK_TYPE...>(hw::cpu_core(cpu));
         });
         std::array<epoll_event, 128> eevt;
-        bool forever=true;
         timer::timer_set* ts=timer::all_timer_set[cpu_id];
-        while(forever){
-            std::cout<<"***********************"<<cpu_id<<" start**********************************"<<std::endl;
+        while(_all_thread_state_[cpu_id].wait_start_flag<=0){
+            sleep(1);
+        }
+        while(_all_thread_state_[cpu_id].wait_start_flag>0){
             auto x=ts->nearest_delay(timer::now_tick());
             int wait_timer=-1;
             if(x)
                 wait_timer= static_cast<int>(x.value());
-            std::cout<<"***********************"<<"wait timer"<<":"<<wait_timer<<"  join**********************************"<<cpu_id<<std::endl;
             _all_thread_state_[cpu_id].running_step=0;
             _all_thread_state_[cpu_id].epoll_wait_time=wait_timer;
+            logger::info("***thread wait epoll events at cpu:{0},wait timer :{1}",cpu_id,wait_timer);
             int cnt=poller::_all_pollers[cpu_id]->wait_event(eevt.data(),eevt.size(),wait_timer);
             _all_thread_state_[cpu_id].running_step=1;
-            std::cout<<"***********************"<<cpu_id<<":"<<cnt<<"  join**********************************"<<std::endl;
+            logger::info("***thread recved epoll events at cpu:{0},count :{1}",cpu_id,cnt);
             ts->handle_timeout(timer::now_tick());
             if(cnt>0){
                 for(int i=0;i<cnt;++i){
@@ -47,12 +49,13 @@ namespace threading{
                 }
             }
 
-            std::cout<<"***********************"<<cpu_id<<"   end**********************************"<<std::endl;
+            logger::info("***thread handled epoll events at cpu:{0}",cpu_id);
         }
     }
 
     template <typename ..._TASK_TYPE>
     auto make_thread(const hw::cpu_core& cpu_id){
+        _all_thread_state_[static_cast<int>(cpu_id)].wait_start_flag=0;
         return std::thread(thread_task<_TASK_TYPE...>,cpu_id);
     }
 }

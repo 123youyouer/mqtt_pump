@@ -6,6 +6,7 @@
 #define PROJECT_THREADING_STATE_HH
 namespace threading{
     struct thread_state{
+        int wait_start_flag;
         int running_step;
         int epoll_wait_time;
     };

@@ -150,6 +150,9 @@ namespace reactor{
                 catch (const std::exception& e){
                     std::cout<<e.what()<<std::endl;
                 }
+                catch (...){
+                    std::cout<<"uncached exception!!!!!"<<std::endl;
+                }
             }
         }
         virtual ~flow_base()= default;
@@ -379,8 +382,9 @@ namespace reactor{
     template <>
     class flow_exception_handler<void>:public flow<void,void,false>{
     public:
-        explicit flow_exception_handler(typename flow<void,void,false>::exception_handler_res_type&& f)
-        :flow<void,void,false>([](){ return;}){
+        explicit
+        flow_exception_handler(typename flow<void,void,false>::exception_handler_res_type&& f)
+                :flow<void,void,false>([](){ return;}){
             this->_exception_func=std::forward<typename flow<void,void,false>::exception_handler_res_type&&>(f);
         }
     };

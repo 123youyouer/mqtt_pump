@@ -30,93 +30,91 @@ namespace logger{
         uint8_t sink_flag;
         aio::aio_file _f;
     public:
-        simple_logger():sink_flag(sink_flag_file|sink_flag_console),_f("logs/log.txt"){
-            _f.start_at(hw::get_thread_cpu_id());
+        simple_logger():sink_flag(sink_flag_file|sink_flag_console),_f("log.txt"){
+            //_f.start_at(hw::get_thread_cpu_id());
         }
         explicit
-        simple_logger(uint8_t _sf):sink_flag(_sf),_f("logs/log.txt"){
-            _f.start_at(hw::get_thread_cpu_id());
+        simple_logger(uint8_t _sf):sink_flag(_sf),_f("log.txt"){
+            //_f.start_at(hw::get_thread_cpu_id());
         }
         template<typename... Args>
         inline void
-        log(log_level lvl, string_view_t fmt, const Args &... args){
-            memory_buf_t buf;
-            fmt::format_to(buf, fmt, args...);
+        log(log_level lvl, const char* sfmt, const Args &... args){
+            auto s=fmt::format(sfmt,args...);
             if(sink_flag&sink_flag_console)
-                std::cout<<buf.data()<<std::endl;
+                std::cout<<s.data()<<std::endl;
             if(sink_flag&sink_flag_file)
-                _f.wait_write_done(buf.data(),buf.size()).then([buf=std::forward<memory_buf_t>(buf)](aio::aio_cb_args&& v){
-                }).submit();
+                _f.write_no_res(s.data(),s.length());
         }
         template<typename... Args>
-        void trace(string_view_t fmt, const Args &... args)
+        void trace(const char* fmt, const Args &... args)
         {
             log(log_level::trace, fmt, args...);
         }
 
         template<typename... Args>
-        void debug(string_view_t fmt, const Args &... args)
+        void debug(const char* fmt, const Args &... args)
         {
             log(log_level::debug, fmt, args...);
         }
 
         template<typename... Args>
-        void info(string_view_t fmt, const Args &... args)
+        void info(const char* fmt, const Args &... args)
         {
             log(log_level::info, fmt, args...);
         }
 
         template<typename... Args>
-        void warn(string_view_t fmt, const Args &... args)
+        void warn(const char* fmt, const Args &... args)
         {
             log(log_level::warn, fmt, args...);
         }
 
         template<typename... Args>
-        void error(string_view_t fmt, const Args &... args)
+        void error(const char* fmt, const Args &... args)
         {
             log(log_level::err, fmt, args...);
         }
 
         template<typename... Args>
-        void critical(string_view_t fmt, const Args &... args)
+        void critical(const char* fmt, const Args &... args)
         {
             log(log_level::critical, fmt, args...);
         }
     };
     simple_logger* default_logger_ptr = nullptr;
     template<typename... Args>
-    void trace(string_view_t fmt, const Args &... args)
+    void trace(const char* fmt, const Args &... args)
     {
         default_logger_ptr->log(log_level::trace, fmt, args...);
     }
 
     template<typename... Args>
-    void debug(string_view_t fmt, const Args &... args)
+    void debug(const char* fmt, const Args &... args)
     {
         default_logger_ptr->log(log_level::debug, fmt, args...);
     }
 
     template<typename... Args>
-    void info(string_view_t fmt, const Args &... args)
+    void info(const char* fmt, const Args &... args)
     {
         default_logger_ptr->log(log_level::info, fmt, args...);
     }
 
     template<typename... Args>
-    void warn(string_view_t fmt, const Args &... args)
+    void warn(const char* fmt, const Args &... args)
     {
         default_logger_ptr->log(log_level::warn, fmt, args...);
     }
 
     template<typename... Args>
-    void error(string_view_t fmt, const Args &... args)
+    void error(const char* fmt, const Args &... args)
     {
         default_logger_ptr->log(log_level::err, fmt, args...);
     }
 
     template<typename... Args>
-    void critical(string_view_t fmt, const Args &... args)
+    void critical(const char* fmt, const Args &... args)
     {
         default_logger_ptr->log(log_level::critical, fmt, args...);
     }

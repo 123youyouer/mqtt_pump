@@ -224,7 +224,7 @@ namespace net{
                                 case 1:
                                     return wait_packet(len);
                                 case 2:
-                                    std::throw_with_nested(std::forward<net::tcp_session_exception>(std::get<2>(e)));
+                                    throw net::tcp_session_exception(std::get<2>(e));
 
                             }
                         }, *this);

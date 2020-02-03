@@ -39,10 +39,11 @@ namespace engine{
         timer::init_all_timer_set(hw::the_cpu_count);
         reactor::init_global_task_schedule_center<_T...>(hw::the_cpu_count);
         poller::init_all_poller(hw::the_cpu_count);
-
         for(int i=0;i<hw::the_cpu_count;++i)
             threading::make_thread<_T...>(hw::cpu_core(i)).detach();
         logger::default_logger_ptr=new logger::simple_logger;
+        for(int i=0;i<hw::the_cpu_count;++i)
+            threading::_all_thread_state_[i].wait_start_flag=1;
     }
 }
 
