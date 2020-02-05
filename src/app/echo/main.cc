@@ -64,41 +64,30 @@ public:
 };
 typedef boost::intrusive::list<adata, boost::intrusive::base_hook<BaseHook>,boost::intrusive::constant_time_size<false>> FooList;
 int main(){
-    char sz[]={0x01,0x03,0x00,0x05};
-
-    std::string_view v(sz);
-    std::cout<<v.size()<<std::endl;
-    int a=v.length();
 
 
-    data::cache_lsu<int> cache;
+    std::variant<int,std::shared_ptr<int>,std::shared_ptr<std::string>> variant1;
+    variant1.emplace<std::shared_ptr<std::string>>(std::make_shared<std::string>("000"));
+    auto sh=std::get<std::shared_ptr<std::string>>(variant1);
 
-    cache.push("1",std::make_shared<int>(1));
+    data::cache_lsu<int,std::string> cache;
+    cache.push("1",std::make_shared<int>(2));
+    cache.push("1",std::make_shared<int>(3));
+    auto u=cache.find<std::string>("1");
+    std::visit([](auto&& arg){
+        using T = std::decay_t<decltype(arg)>;
+        if constexpr (std::is_same_v<T,data::cache_find_error_code>){
+            std::cout<<"error : "<< static_cast<int>(arg)<<std::endl;
+        }
+        else if constexpr (std::is_same_v<T,std::shared_ptr<int>>){
+            std::cout<<"value : "<< *arg<<std::endl;
+        }
+    },u);
+    std::cout<<*std::get<1>(u)<<std::endl;
+    cache.push("1",std::make_shared<std::string>("000"));
+    auto x=cache.find<std::string>("1");
+    std::cout<<*std::get<1>(x)<<std::endl;
 
-    using _t_=int;
-
-    auto d=cache.find<_t_>("1");
-
-    std::cout<<*std::get<std::shared_ptr<_t_>>(d)<<std::endl;
-
-    *std::get<std::shared_ptr<_t_>>(d)=9;
-
-    d=cache.find<int>("1");
-
-    std::cout<<*std::get<std::shared_ptr<_t_>>(d)<<std::endl;
-
-    cache.push("2",std::make_shared<int>(2));
-
-    FooList l;
-    adata a2(2);
-    l.push_back(a2);
-    {
-        adata a1(1);
-        l.push_back(a1);
-        a1.a=3;
-    }
-
-    std::cout<<l.size()<<":"<<l.begin()->a<<std::endl;
 
 
     hw::pin_this_thread(0);

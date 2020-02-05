@@ -10,6 +10,8 @@
 #include <boost/hana.hpp>
 #include <variant>
 #include <memory>
+#include <utils/g_define.hh>
+
 namespace data{
     using namespace boost::hana::literals;
     namespace bi=boost::intrusive;
@@ -29,13 +31,15 @@ namespace data{
         cache_key(const char* k,bool copy=true)
                 :_data(copy?copy_data(k):k),_view(_data),_code(std::hash<std::string_view>()(_view)){
         }
-        [[gnu::always_inline]][[gnu::hot]]
-        size_t
+        virtual
+        ~cache_key(){
+            delete _data;
+        }
+        PUMP_INLINE size_t
         hash_code()const{
             return _code;
         }
-        [[gnu::always_inline]][[gnu::hot]]
-        friend inline bool
+        PUMP_INLINE friend bool
         operator==(const cache_key& l,const cache_key& r){
             return (l._code==r._code)&&(r._view==r._view);
         }
@@ -64,16 +68,14 @@ namespace data{
             _data.template emplace<std::shared_ptr<_V_>>(v);
         }
         template <typename _V_>
-        [[gnu::always_inline]][[gnu::hot]]
-        inline auto
+        PUMP_INLINE auto
         get_data(){
             return std::get<std::shared_ptr<_V_>>(_data);
         }
 
-        [[gnu::always_inline]][[gnu::hot]]
-        friend inline bool
+        PUMP_INLINE friend bool
         operator == (const cache_entry<_VALUE_TYPES_...>& l1,const cache_entry<_VALUE_TYPES_...>& l2){
-            return  l1._key==l2._key;
+            return  (l1._key==l2._key);
         }
         [[gnu::always_inline]][[gnu::hot]]
         friend inline size_t
@@ -165,31 +167,35 @@ namespace data{
         }
         virtual
         ~cache_lsu()= default;
-        [[gnu::always_inline]][[gnu::hot]]
-        inline bool
-        remv(const char* k){
-            std::string_view v(k);
-            static auto hash_fn=[](const std::string_view& k){return std::hash<std::string_view>()(k);};
-            _store.find(v,hash_fn);
-            return false;
+        PUMP_INLINE bool
+        erase(const char* k){
+            static auto hash_fn=[](const cache_key& k){ return k.hash_code();};
+            auto it=_store.find(cache_key(k),hash_fn,compare());
+            if(it==_store.end())
+                return false;
+            _store.erase_and_dispose(it,[](cache_entry<_VALUE_TYPES_...>* o){delete o;});
+            return true;
         }
         template <typename _V_>
-        [[gnu::always_inline]][[gnu::hot]]
-        inline void
+        PUMP_INLINE void
         push(const char* k,const std::shared_ptr<_V_>& v){
             auto e=(new cache_entry<_VALUE_TYPES_...>(k,v));
-            _store.insert(*e);
+            auto p=_store.insert(*e);
+            if(!p.second){
+                e->_data.swap(p.first->_data);
+                delete e;
+            }
+            maybe_rehash();
         }
 
         template <typename _V_>
-        [[gnu::always_inline]][[gnu::hot]]
-        inline std::variant<cache_find_error_code,std::shared_ptr<_V_>>
+        PUMP_INLINE std::variant<cache_find_error_code,std::shared_ptr<_V_>>
         find(const char* k)noexcept{
             static auto hash_fn=[](const cache_key& k){ return k.hash_code();};
             auto it=_store.find(cache_key(k),hash_fn,compare());
-            std::variant<int,std::shared_ptr<_V_>> res;
+            std::variant<cache_find_error_code,std::shared_ptr<_V_>> res;
             if(it==_store.end()){
-                res.template emplace<int>(cache_find_error_code::cant_found);
+                res.template emplace<cache_find_error_code>(cache_find_error_code::cant_found);
                 return res;
             }
             else{
@@ -198,15 +204,30 @@ namespace data{
                     res.template emplace<std::shared_ptr<_V_>>(x);
                 }
                 catch(std::bad_variant_access& e){
-                    res.template emplace<int>(cache_find_error_code::err_value_type);
+                    res.template emplace<cache_find_error_code>(cache_find_error_code::err_value_type);
                 }
                 catch(std::exception& e){
-                    res.template emplace<int>(cache_find_error_code::std_exception);
+                    res.template emplace<cache_find_error_code>(cache_find_error_code::std_exception);
                 }
                 catch(...){
-                    res.template emplace<int>(cache_find_error_code::unk_exception);
+                    res.template emplace<cache_find_error_code>(cache_find_error_code::unk_exception);
                 }
                 return res;
+            }
+        }
+        void maybe_rehash()
+        {
+            if (_store.size() >= _resize_up_threshold) {
+                auto new_size = _store.bucket_count() * 2;
+                auto old_buckets = _buckets;
+                try {
+                    _buckets = new cache_bucket_type[new_size];
+                } catch (const std::bad_alloc& e) {
+                    return;
+                }
+                _store.rehash(typename cache_type::bucket_traits(_buckets, new_size));
+                delete[] old_buckets;
+                _resize_up_threshold = _store.bucket_count() * load_factor;
             }
         }
     };
