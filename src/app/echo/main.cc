@@ -5,6 +5,7 @@
 #include <net/tcp_session.hh>
 #include <pump.hh>
 #include <utils/lru_cache.hh>
+#include <data/unaligned_cast.hh>
 
 #pragma clang diagnostic push
 #pragma ide diagnostic ignored "InfiniteRecursion"
@@ -51,7 +52,55 @@ void run_echo(net::listener<_PORT_>& l){
 }
 #pragma clang diagnostic pop
 
+#include <boost/intrusive/list.hpp>
+#include <data/cahce.hh>
+class tag_1{};
+using lm=boost::intrusive::link_mode<boost::intrusive::auto_unlink>;
+using BaseHook = boost::intrusive::list_base_hook<lm>;
+class adata : public BaseHook{
+public:
+    int a;
+    explicit adata(int _a):a(_a){}
+};
+typedef boost::intrusive::list<adata, boost::intrusive::base_hook<BaseHook>,boost::intrusive::constant_time_size<false>> FooList;
 int main(){
+    char sz[]={0x01,0x03,0x00,0x05};
+
+    std::string_view v(sz);
+    std::cout<<v.size()<<std::endl;
+    int a=v.length();
+
+
+    data::cache_lsu<int> cache;
+
+    cache.push("1",std::make_shared<int>(1));
+
+    using _t_=int;
+
+    auto d=cache.find<_t_>("1");
+
+    std::cout<<*std::get<std::shared_ptr<_t_>>(d)<<std::endl;
+
+    *std::get<std::shared_ptr<_t_>>(d)=9;
+
+    d=cache.find<int>("1");
+
+    std::cout<<*std::get<std::shared_ptr<_t_>>(d)<<std::endl;
+
+    cache.push("2",std::make_shared<int>(2));
+
+    FooList l;
+    adata a2(2);
+    l.push_back(a2);
+    {
+        adata a1(1);
+        l.push_back(a1);
+        a1.a=3;
+    }
+
+    std::cout<<l.size()<<":"<<l.begin()->a<<std::endl;
+
+
     hw::pin_this_thread(0);
     sleep(1);
     hw::the_cpu_count=1;
@@ -61,6 +110,9 @@ int main(){
                     reactor::sortable_task<utils::noncopyable_function<void()>,2>
             >();
     sleep(1);
+
+    utils::lru_cache<std::string,std::string> a_cache;
+
     logger::info("echo server started ......");
     run_echo(net::listener<9022>::instance.start_at(hw::cpu_core::_01));
     logger::info("echo server listen at {}",9022);
