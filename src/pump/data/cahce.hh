@@ -5,6 +5,7 @@
 #ifndef PROJECT_CAHCE_HH
 #define PROJECT_CAHCE_HH
 
+#include <boost/noncopyable.hpp>
 #include <boost/intrusive/list.hpp>
 #include <boost/intrusive/unordered_set.hpp>
 #include <boost/hana.hpp>
@@ -53,6 +54,7 @@ namespace data{
     cache_entry{
         friend class cache_lsu<_VALUE_TYPES_...>;
     private:
+        using variant_type=std::variant<std::monostate,std::shared_ptr<_VALUE_TYPES_>...>;
         using list_link_type=bi::list_member_hook<bi::link_mode<bi::auto_unlink>>;
         using uset_hook_type=bi::unordered_set_member_hook<>;
         bi::list_member_hook<> _timer_link;
@@ -61,16 +63,11 @@ namespace data{
         list_link_type _lslru_link;
     public:
         cache_key _key;
-        std::variant<std::monostate,std::shared_ptr<_VALUE_TYPES_>...> _data;
+        std::shared_ptr<variant_type> _shared_ptr_data;
         template <typename _V_> explicit
         cache_entry(const char* _k,const std::shared_ptr<_V_>& v)noexcept
-                :_key(_k){
-            _data.template emplace<std::shared_ptr<_V_>>(v);
-        }
-        template <typename _V_>
-        PUMP_INLINE auto
-        get_data(){
-            return std::get<std::shared_ptr<_V_>>(_data);
+                :_key(_k),_shared_ptr_data(std::make_shared<variant_type>()){
+            _shared_ptr_data->template emplace<std::shared_ptr<_V_>>(v);
         }
 
         PUMP_INLINE friend bool
@@ -93,7 +90,7 @@ namespace data{
 
     template<typename ..._VALUE_TYPES_>
     class
-    cache_lsu{
+    cache_lsu:boost::noncopyable{
     private:
         using cache_type = bi::unordered_set
                 <
@@ -159,6 +156,7 @@ namespace data{
         dirty_list_type _dirty;
 
     public:
+        cache_lsu(cache_lsu&& o)noexcept=delete;
         cache_lsu()noexcept
         :_buckets(new cache_bucket_type[initial_bucket_count])
         ,_store(typename cache_type::bucket_traits(_buckets, initial_bucket_count))
@@ -168,40 +166,49 @@ namespace data{
         virtual
         ~cache_lsu()= default;
         PUMP_INLINE bool
-        erase(const char* k){
+        erase(const cache_key& k){
             static auto hash_fn=[](const cache_key& k){ return k.hash_code();};
-            auto it=_store.find(cache_key(k),hash_fn,compare());
+            auto it=_store.find(k,hash_fn,compare());
             if(it==_store.end())
                 return false;
             _store.erase_and_dispose(it,[](cache_entry<_VALUE_TYPES_...>* o){delete o;});
             return true;
         }
-        template <typename _V_>
+
+        PUMP_INLINE bool
+        erase(const char* k){
+            return erase(cache_key(k));
+        }
+
         PUMP_INLINE void
-        push(const char* k,const std::shared_ptr<_V_>& v){
-            auto e=(new cache_entry<_VALUE_TYPES_...>(k,v));
+        push(cache_entry<_VALUE_TYPES_...>* e, bool delete_when_swap= true){
             auto p=_store.insert(*e);
             if(!p.second){
-                e->_data.swap(p.first->_data);
-                delete e;
+                e->_shared_ptr_data->swap(*(p.first->_shared_ptr_data));
+                if(delete_when_swap)
+                    delete e;
             }
             maybe_rehash();
         }
 
         template <typename _V_>
-        PUMP_INLINE std::variant<cache_find_error_code,std::shared_ptr<_V_>>
-        find(const char* k)noexcept{
+        PUMP_INLINE void
+        push(const char* k,const std::shared_ptr<_V_>& v){
+            push(new cache_entry<_VALUE_TYPES_...>(k,v));
+        }
+
+        PUMP_INLINE std::variant<cache_find_error_code,std::shared_ptr<typename cache_entry<_VALUE_TYPES_...>::variant_type>>
+        find(const cache_key& k)noexcept{
             static auto hash_fn=[](const cache_key& k){ return k.hash_code();};
-            auto it=_store.find(cache_key(k),hash_fn,compare());
-            std::variant<cache_find_error_code,std::shared_ptr<_V_>> res;
+            auto it=_store.find(k,hash_fn,compare());
+            std::variant<cache_find_error_code,std::shared_ptr<typename cache_entry<_VALUE_TYPES_...>::variant_type>> res;
             if(it==_store.end()){
                 res.template emplace<cache_find_error_code>(cache_find_error_code::cant_found);
                 return res;
             }
             else{
                 try {
-                    auto x=it->template get_data<_V_>();
-                    res.template emplace<std::shared_ptr<_V_>>(x);
+                    res.template emplace<std::shared_ptr<typename cache_entry<_VALUE_TYPES_...>::variant_type>>(it->_shared_ptr_data);
                 }
                 catch(std::bad_variant_access& e){
                     res.template emplace<cache_find_error_code>(cache_find_error_code::err_value_type);
@@ -214,6 +221,11 @@ namespace data{
                 }
                 return res;
             }
+        }
+
+        PUMP_INLINE std::variant<cache_find_error_code,std::shared_ptr<typename cache_entry<_VALUE_TYPES_...>::variant_type>>
+        find(const char* k)noexcept{
+            return find(cache_key(k));
         }
         void maybe_rehash()
         {
@@ -230,6 +242,8 @@ namespace data{
                 _resize_up_threshold = _store.bucket_count() * load_factor;
             }
         }
+
+        friend void operator &(cache_lsu<_VALUE_TYPES_...>& v){}
     };
 }
 #endif //PROJECT_CAHCE_HH

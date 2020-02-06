@@ -388,19 +388,147 @@ namespace reactor{
             this->_exception_func=std::forward<typename flow<void,void,false>::exception_handler_res_type&&>(f);
         }
     };
+    template <typename _A,bool startor>
+    class cpu_change_flow{};
+
+
+    template <typename _A>
+    class cpu_change_flow<_A,false>: public flow_base<_A,_A,false>{
+    public:
+        explicit
+        cpu_change_flow(hw::cpu_core cpu):flow_base<_A,_A,false>(){
+            this->set_schedule_context(cpu);
+        }
+        void
+        submit()override{
+            this->_prev->submit();
+        }
+        void
+        active(_A&& a)override{
+            if(!this->_next)
+                return;
+            this->_next->set_schedule_context(this->_rc_);
+            if(this->_rc_==hw::get_thread_cpu_id()){
+                this->_next->active(std::forward<_A>(a));
+                delete this;
+            }
+            else{
+                schedule_to<hw::cpu_core>::apply(this->_rc_,[a=std::forward<_A>(a),next=this->_next]()mutable{
+                    if(next)
+                        next->active(std::forward<_A>(a));
+                });
+                delete(this);
+            }
+        }
+    };
+    template <typename _A>
+    class cpu_change_flow<_A,true>: public flow_base<_A,_A,true>{
+        _A _a;
+    public:
+        explicit
+        cpu_change_flow(hw::cpu_core cpu,_A&& a):flow_base<_A,_A,true>(),_a(a){
+            this->set_schedule_context(cpu);
+        }
+        void
+        submit()override{
+            if(!this->_next)
+                return;
+            this->_next->set_schedule_context(this->_rc_);
+            schedule_to<hw::cpu_core>::apply(this->_rc_,[a=std::forward<_A>(_a),next=this->_next]()mutable{
+                if(next)
+                    next->active(std::forward<_A>(a));
+            });
+            delete(this);
+        }
+        void
+        active(_A&& a)override{
+            if(!this->_next)
+                return;
+            this->_next->set_schedule_context(this->_rc_);
+            if(this->_rc_==hw::get_thread_cpu_id()){
+                this->_next->active(std::forward<_A>(a));
+                delete this;
+            }
+            else{
+                schedule_to<hw::cpu_core>::apply(this->_rc_,[a=std::forward<_A>(a),next=this->_next]()mutable{
+                    if(next)
+                        next->active(std::forward<_A>(a));
+                });
+                delete(this);
+            }
+        }
+    };
+    template <>
+    class cpu_change_flow<void,true>:public flow_base<void,void,true>{
+    public:
+        explicit
+        cpu_change_flow(hw::cpu_core cpu):flow_base<void,void,true>(){
+            this->set_schedule_context(cpu);
+        }
+        void
+        submit()override{
+            if(!this->_next)
+                return;
+            this->_next->set_schedule_context(this->_rc_);
+            schedule_to<hw::cpu_core>::apply(this->_rc_,[next=this->_next]()mutable{
+                if(next)
+                    next->active();
+            });
+            delete(this);
+        }
+        void
+        active()override{
+            if(!this->_next)
+                return;
+            this->_next->set_schedule_context(this->_rc_);
+            if(this->_rc_==hw::get_thread_cpu_id()){
+                this->_next->active();
+                delete this;
+            }
+            else{
+                schedule_to<hw::cpu_core>::apply(this->_rc_,[next=this->_next]()mutable{
+                    if(next)
+                        next->active();
+                });
+                delete(this);
+            }
+        }
+    };
+    template <>
+    class cpu_change_flow<void,false>:public flow_base<void,void,false>{
+    public:
+        explicit
+        cpu_change_flow(hw::cpu_core cpu):flow_base<void,void,false>(){
+            this->set_schedule_context(cpu);
+        }
+        void
+        submit()override{
+            this->_prev->submit();
+        }
+        void
+        active()override{
+            if(!this->_next)
+                return;
+            this->_next->set_schedule_context(this->_rc_);
+            if(this->_rc_==hw::get_thread_cpu_id()){
+                this->_next->active();
+                delete this;
+            }
+            else{
+                schedule_to<hw::cpu_core>::apply(this->_rc_,[next=this->_next]()mutable{
+                    if(next)
+                        next->active();
+                });
+                delete(this);
+            }
+        }
+    };
 
 
     template <typename _V>
-    class flow_builder{
-    public:
-        prev_able<_V>* _flow;
-    public:
-        explicit
-        flow_builder(prev_able<_V>* _f):_flow(_f){}
-        template <typename _F,typename _R=std::result_of_t<_F(typename _compute_flow_res_type_<_V>::_T_&&)>>
-        flow_builder<typename _compute_flow_res_type_<_R>::_T_> then(_F &&f){
-            return then(std::forward<_F>(f), next_able<_V>::_default_running_context_);
-        }
+    class
+    flow_builder{
+    private:
         template <typename _F,typename _R=std::result_of_t<_F(typename _compute_flow_res_type_<_V>::_T_&&)>>
         flow_builder<typename _compute_flow_res_type_<_R>::_T_>
         then(_F &&f, const typename next_able<_V>::_running_context_type_ &c){
@@ -409,6 +537,15 @@ namespace reactor{
             res->_prev=_flow;
             _flow->_next=res;
             return flow_builder<typename _compute_flow_res_type_<_R>::_T_>(res);
+        }
+    public:
+        prev_able<_V>* _flow;
+    public:
+        explicit
+        flow_builder(prev_able<_V>* _f):_flow(_f){}
+        template <typename _F,typename _R=std::result_of_t<_F(typename _compute_flow_res_type_<_V>::_T_&&)>>
+        flow_builder<typename _compute_flow_res_type_<_R>::_T_> then(_F &&f){
+            return then(std::forward<_F>(f), next_able<_V>::_default_running_context_);
         }
         void
         submit(){
@@ -425,19 +562,18 @@ namespace reactor{
             _flow->_next=res;
             return flow_builder<_V>(res);
         }
+        flow_builder<_V>
+        at_cpu(hw::cpu_core cpu){
+            cpu_change_flow<_V,false>* res=new cpu_change_flow<_V,false>(cpu);
+            res->_prev=_flow;
+            _flow->_next=res;
+            return flow_builder<_V>(res);
+        }
 
     };
     template <>
     class flow_builder<void>{
-    public:
-        prev_able<void>* _flow;
-    public:
-        explicit
-        flow_builder(prev_able<void>* _f):_flow(_f){}
-        template <typename _F,typename _R=std::result_of_t<_F()>>
-        flow_builder<typename _compute_flow_res_type_<_R>::_T_> then(_F &&f){
-            return then(std::forward<_F>(f), next_able<void>::_default_running_context_);
-        }
+    private:
         template <typename _F,typename _R=std::result_of_t<_F()>>
         flow_builder<typename _compute_flow_res_type_<_R>::_T_>
         then(_F &&f, const typename next_able<void>::_running_context_type_ &c){
@@ -447,8 +583,17 @@ namespace reactor{
             _flow->_next=res;
             return flow_builder<typename _compute_flow_res_type_<_R>::_T_>(res);
         }
-
-        void submit(){
+    public:
+        prev_able<void>* _flow;
+    public:
+        explicit
+        flow_builder(prev_able<void>* _f):_flow(_f){}
+        template <typename _F,typename _R=std::result_of_t<_F()>>
+        flow_builder<typename _compute_flow_res_type_<_R>::_T_> then(_F &&f){
+            return then(std::forward<_F>(f), next_able<void>::_default_running_context_);
+        }
+        void
+        submit(){
             _flow->submit();
         }
         template <typename _F,typename _R=std::result_of_t<_F(std::exception_ptr)>>
@@ -460,18 +605,29 @@ namespace reactor{
             _flow->_next=res;
             return flow_builder<void>(res);
         }
+        flow_builder<void>
+        at_cpu(hw::cpu_core cpu){
+            cpu_change_flow<void,false>* res=new cpu_change_flow<void,false>(cpu);
+            res->_prev=_flow;
+            _flow->_next=res;
+            return flow_builder<void>(res);
+        }
     };
 
+
+    template <typename _A>
+    auto
+    at_cpu(hw::cpu_core cpu,_A&& a){
+        return flow_builder(new cpu_change_flow<_A,true>(cpu,std::forward<_A>(a)));
+    }
+    auto
+    at_cpu(hw::cpu_core cpu){
+        return flow_builder(new cpu_change_flow<void,true>(cpu));
+    }
     template <typename _A,typename _F>
     auto
-    make_flow(_F &&f, typename next_able<_A>::_running_context_type_ &c = next_able<_A>::_default_running_context_){
+    at_ctx(_F &&f, typename next_able<_A>::_running_context_type_ &c = next_able<_A>::_default_running_context_){
         return flow_builder(new flow<_A,std::result_of_t<_F(_A&&)>,true>(std::forward<_F>(f),c));
-    }
-    template <typename _F>
-    auto
-    make_flow(_F &&f,
-                   const typename next_able<void>::_running_context_type_ &c = next_able<void>::_default_running_context_){
-        return flow_builder(new flow<void ,std::result_of_t<_F()>,true>(std::forward<_F>(f),c));
     }
 }
 #endif //PROJECT_FLOW_HH

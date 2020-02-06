@@ -54,6 +54,7 @@ void run_echo(net::listener<_PORT_>& l){
 
 #include <boost/intrusive/list.hpp>
 #include <data/cahce.hh>
+#include <data/cahce_reactor.hh>
 class tag_1{};
 using lm=boost::intrusive::link_mode<boost::intrusive::auto_unlink>;
 using BaseHook = boost::intrusive::list_base_hook<lm>;
@@ -64,35 +65,9 @@ public:
 };
 typedef boost::intrusive::list<adata, boost::intrusive::base_hook<BaseHook>,boost::intrusive::constant_time_size<false>> FooList;
 int main(){
-
-
-    std::variant<int,std::shared_ptr<int>,std::shared_ptr<std::string>> variant1;
-    variant1.emplace<std::shared_ptr<std::string>>(std::make_shared<std::string>("000"));
-    auto sh=std::get<std::shared_ptr<std::string>>(variant1);
-
-    data::cache_lsu<int,std::string> cache;
-    cache.push("1",std::make_shared<int>(2));
-    cache.push("1",std::make_shared<int>(3));
-    auto u=cache.find<std::string>("1");
-    std::visit([](auto&& arg){
-        using T = std::decay_t<decltype(arg)>;
-        if constexpr (std::is_same_v<T,data::cache_find_error_code>){
-            std::cout<<"error : "<< static_cast<int>(arg)<<std::endl;
-        }
-        else if constexpr (std::is_same_v<T,std::shared_ptr<int>>){
-            std::cout<<"value : "<< *arg<<std::endl;
-        }
-    },u);
-    std::cout<<*std::get<1>(u)<<std::endl;
-    cache.push("1",std::make_shared<std::string>("000"));
-    auto x=cache.find<std::string>("1");
-    std::cout<<*std::get<1>(x)<<std::endl;
-
-
-
     hw::pin_this_thread(0);
     sleep(1);
-    hw::the_cpu_count=1;
+    hw::the_cpu_count=3;
     engine::init_engine
             <
                     reactor::sortable_task<utils::noncopyable_function<void()>,1>,
@@ -100,7 +75,27 @@ int main(){
             >();
     sleep(1);
 
-    utils::lru_cache<std::string,std::string> a_cache;
+
+    reactor::at_cpu(hw::cpu_core::_01)
+            .then([](){
+                data::cache_on_thread.push("1",std::make_shared<std::string>("2"));
+                return 10;
+            })
+            .at_cpu(hw::cpu_core::_02)
+            .then([](int&& i){
+                data::cache_on_thread.push("1",std::make_shared<std::string>("3"));
+            })
+            .at_cpu(hw::cpu_core::_01)
+            .then([](){
+                auto x=(*std::get<2>(*(std::get<1>(data::cache_on_thread.find("1")))));
+                logger::info("{}",x);
+            })
+            .at_cpu(hw::cpu_core::_02)
+            .then([](){
+                auto x=(*std::get<2>(*(std::get<1>(data::cache_on_thread.find("1")))));
+                logger::info("{}",x);
+            })
+            .submit();
 
     logger::info("echo server started ......");
     run_echo(net::listener<9022>::instance.start_at(hw::cpu_core::_01));

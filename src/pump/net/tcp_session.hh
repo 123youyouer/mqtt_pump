@@ -216,7 +216,7 @@ namespace net{
         reactor::flow_builder<linear_ringbuffer_st*>
         wait_packet(size_t len){
             if(read_buf.empty() || read_buf.size()<len)
-                return reactor::make_flow<_read_event_type_>
+                return reactor::at_ctx<_read_event_type_>
                         ([this,len](_read_event_type_&& e) {
                             switch(e.index()){
                                 case 0:
@@ -230,9 +230,7 @@ namespace net{
                         }, *this);
 
             else
-                return reactor::make_flow([this]() {
-                    return &read_buf;
-                });
+                return reactor::at_cpu(this->cpu,&read_buf);
         }
         reactor::flow_builder<linear_ringbuffer_st*>
         wait_packet(){
@@ -242,11 +240,9 @@ namespace net{
         send_data(send_cache&& cache){
             if(cache.send(connection_data.session_fd)>=0){
                 if(cache.complated())
-                    return reactor::make_flow([c = std::forward<send_cache>(cache)]() {
-                        return;
-                    });
+                    return reactor::at_cpu(this->cpu);
                 else
-                    return reactor::make_flow<session_sendable_event>
+                    return reactor::at_ctx<session_sendable_event>
                             ([c = std::forward<send_cache>(cache), this](session_sendable_event &&e)mutable {
                                 return this->send_data(std::forward<send_cache>(c));
                             }, *this);
@@ -254,7 +250,7 @@ namespace net{
             else{
                 switch (errno){
                     case EWOULDBLOCK:
-                        return reactor::make_flow<session_sendable_event>
+                        return reactor::at_ctx<session_sendable_event>
                                 ([c = std::forward<send_cache>(cache), this](session_sendable_event &&e)mutable {
                                     return this->send_data(std::forward<send_cache>(c));
                                 }, *this);
