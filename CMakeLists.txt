@@ -4,7 +4,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(BOOST_ROOT "/usr/local/include/boost")
 set(PROJECT_ROOT "~/work/mqtt_pump")
 
-add_compile_options("-O0")
+add_compile_options("-O3")
 add_compile_options("-fnon-call-exceptions")
 
 include_directories(${BOOST_ROOT}/include)

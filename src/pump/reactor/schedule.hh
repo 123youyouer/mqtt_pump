@@ -13,7 +13,6 @@
 #include <reactor/task.hh>
 #include <iostream>
 #include <poller/poller.hh>
-
 namespace reactor{
     struct _running_context_type_none_{};
 
@@ -50,11 +49,7 @@ namespace reactor{
 
             reactor::global_task_schedule_center<reactor::sortable_task<task_type,1>>[static_cast<int>(src)][static_cast<int>(dst)]
                     ->push(reactor::sortable_task<task_type,1>(std::forward<utils::noncopyable_function<void()>>(f)));
-            std::cout
-            <<"schedule from "<<static_cast<int>(src)
-            <<" to "<<static_cast<int>(dst)
-            <<" q size = "<<reactor::global_task_schedule_center<reactor::sortable_task<task_type,1>>[static_cast<int>(src)][static_cast<int>(dst)]->size()
-            <<std::endl;
+
             eventfd_write(poller::_all_task_runner_fd[static_cast<int>(dst)],1);
         }
     };

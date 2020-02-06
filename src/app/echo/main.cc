@@ -54,7 +54,6 @@ void run_echo(net::listener<_PORT_>& l){
 
 #include <boost/intrusive/list.hpp>
 #include <data/cahce.hh>
-#include <data/cahce_reactor.hh>
 class tag_1{};
 using lm=boost::intrusive::link_mode<boost::intrusive::auto_unlink>;
 using BaseHook = boost::intrusive::list_base_hook<lm>;
@@ -64,10 +63,39 @@ public:
     explicit adata(int _a):a(_a){}
 };
 typedef boost::intrusive::list<adata, boost::intrusive::base_hook<BaseHook>,boost::intrusive::constant_time_size<false>> FooList;
+thread_local data::cache_lsu<int,std::string> cache_on_thread;
+void test(int cpu,int count){
+    reactor::at_cpu(hw::cpu_core(cpu))
+            .then([](){
+                cache_on_thread.push("1",std::make_shared<int>(1));
+            })
+            .then([](){
+                cache_on_thread.push("2",std::make_shared<int>(1));
+            })
+            .then([](){
+                cache_on_thread.push("2",std::make_shared<int>(1));
+            })
+            .then([](){
+                cache_on_thread.push("2",std::make_shared<int>(1));
+            })
+            .then([](){
+                cache_on_thread.push("2",std::make_shared<int>(1));
+            })
+            .then([cpu,i=count](){
+                if((i)<20000){
+                    test(cpu,i+1);
+                }
+                else{
+                    std::cout<<"..."<<timer::now_tick()<<std::endl;
+                }
+            })
+            .submit();
+}
+
 int main(){
     hw::pin_this_thread(0);
     sleep(1);
-    hw::the_cpu_count=3;
+    //hw::the_cpu_count=3;
     engine::init_engine
             <
                     reactor::sortable_task<utils::noncopyable_function<void()>,1>,
@@ -76,23 +104,29 @@ int main(){
     sleep(1);
 
 
+
+    std::cout<<timer::now_tick()<<std::endl;
+    for(int i=0;i<hw::the_cpu_count;++i){
+        test(i,0);
+    }
+    /*
     reactor::at_cpu(hw::cpu_core::_01)
             .then([](){
-                data::cache_on_thread.push("1",std::make_shared<std::string>("2"));
+                cache_on_thread.push("1",std::make_shared<std::string>("2"));
                 return 10;
             })
             .at_cpu(hw::cpu_core::_02)
             .then([](int&& i){
-                data::cache_on_thread.push("1",std::make_shared<std::string>("3"));
+                cache_on_thread.push("1",std::make_shared<std::string>("3"));
             })
             .at_cpu(hw::cpu_core::_01)
             .then([](){
-                auto x=(*std::get<2>(*(std::get<1>(data::cache_on_thread.find("1")))));
+                auto x=(*std::get<2>(*(std::get<1>(cache_on_thread.find("1")))));
                 logger::info("{}",x);
             })
             .at_cpu(hw::cpu_core::_02)
             .then([](){
-                auto x=(*std::get<2>(*(std::get<1>(data::cache_on_thread.find("1")))));
+                auto x=(*std::get<2>(*(std::get<1>(cache_on_thread.find("1")))));
                 logger::info("{}",x);
             })
             .submit();
@@ -100,6 +134,7 @@ int main(){
     logger::info("echo server started ......");
     run_echo(net::listener<9022>::instance.start_at(hw::cpu_core::_01));
     logger::info("echo server listen at {}",9022);
+     */
     sleep(10000);
     return 0;
 }

@@ -98,7 +98,7 @@ namespace logger{
     template<typename... Args>
     void info(const char* fmt, const Args &... args)
     {
-        default_logger_ptr->log(log_level::info, fmt, args...);
+        //default_logger_ptr->log(log_level::info, fmt, args...);
     }
 
     template<typename... Args>
