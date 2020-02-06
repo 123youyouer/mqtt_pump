@@ -64,7 +64,7 @@ public:
 };
 typedef boost::intrusive::list<adata, boost::intrusive::base_hook<BaseHook>,boost::intrusive::constant_time_size<false>> FooList;
 thread_local data::cache_lsu<int,std::string> cache_on_thread;
-void test(int cpu,int count){
+inline void test(int cpu,int count){
     reactor::at_cpu(hw::cpu_core(cpu))
             .then([](){
                 cache_on_thread.push("1",std::make_shared<int>(1));
@@ -73,16 +73,16 @@ void test(int cpu,int count){
                 cache_on_thread.push("2",std::make_shared<int>(1));
             })
             .then([](){
-                cache_on_thread.push("2",std::make_shared<int>(1));
+                cache_on_thread.push("3",std::make_shared<int>(1));
             })
             .then([](){
-                cache_on_thread.push("2",std::make_shared<int>(1));
+                cache_on_thread.push("4",std::make_shared<int>(1));
             })
             .then([](){
-                cache_on_thread.push("2",std::make_shared<int>(1));
+                cache_on_thread.push("5",std::make_shared<int>(1));
             })
             .then([cpu,i=count](){
-                if((i)<20000){
+                if((i)<2000000){
                     test(cpu,i+1);
                 }
                 else{
