@@ -64,7 +64,11 @@ public:
 };
 typedef boost::intrusive::list<adata, boost::intrusive::base_hook<BaseHook>,boost::intrusive::constant_time_size<false>> FooList;
 thread_local data::cache_lsu<int,std::string> cache_on_thread;
-inline void test(int cpu,int count){
+
+uint64_t t=0;
+
+PUMP_INLINE void
+test(int cpu,int count){
     reactor::at_cpu(hw::cpu_core(cpu))
             .then([](){
                 cache_on_thread.push("1",std::make_shared<int>(1));
@@ -86,7 +90,7 @@ inline void test(int cpu,int count){
                     test(cpu,i+1);
                 }
                 else{
-                    std::cout<<"..."<<timer::now_tick()<<std::endl;
+                    std::cout<<"..."<<timer::now_tick()-t<<std::endl;
                 }
             })
             .submit();
@@ -95,7 +99,7 @@ inline void test(int cpu,int count){
 int main(){
     hw::pin_this_thread(0);
     sleep(1);
-    //hw::the_cpu_count=3;
+    //hw::the_cpu_count=1;
     engine::init_engine
             <
                     reactor::sortable_task<utils::noncopyable_function<void()>,1>,
@@ -104,8 +108,8 @@ int main(){
     sleep(1);
 
 
-
-    std::cout<<timer::now_tick()<<std::endl;
+    t=timer::now_tick();
+    std::cout<<t<<std::endl;
     for(int i=0;i<hw::the_cpu_count;++i){
         test(i,0);
     }

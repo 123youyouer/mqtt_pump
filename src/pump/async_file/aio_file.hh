@@ -11,8 +11,8 @@
 #include <hw/cpu.hh>
 #include <sys/eventfd.h>
 #include <poller/poller.hh>
-#include <moodycamel/concurrentqueue.h>
 #include <reactor/flow.hh>
+#include <moodycamel/concurrentqueue.h>
 #include <variant>
 #include <utils/noncopyable_function.hh>
 

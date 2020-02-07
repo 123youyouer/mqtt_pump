@@ -9,6 +9,7 @@
 #include <utils/noncopyable_function.hh>
 #include <reactor/schedule.hh>
 #include <reactor/flow_state.hh>
+#include <reactor/flow_pool.hh>
 namespace reactor{
     template <typename _A,typename _R,bool startor>
     class flow;
@@ -169,7 +170,7 @@ namespace reactor{
             if constexpr (hana::equal(hana::type_c<_R>,hana::type_c<void>)){
                 _func(std::forward<_A>(a));
                 return [next=this->_next,this]()mutable{
-                    delete(this);
+                    _local_flow_pool<flow<_A,_R,startor>>().destroy(this);
                     if(next)
                         next->active();
                 };
@@ -177,14 +178,14 @@ namespace reactor{
             else{
                 if constexpr(hana::equal(hana::type_c<_R>,hana::type_c<typename _compute_flow_res_type_<_R>::_T_>)){
                     return [r=std::forward<_R>(_func(std::forward<_A>(a))),next=this->_next,this]()mutable{
-                        delete(this);
+                        _local_flow_pool<flow<_A,_R,startor>>().destroy(this);
                         if(next)
                             next->active(std::forward<_R>(r));
                     };
                 }
                 else{
                     return [r=std::forward<_R>(_func(std::forward<_A>(a))),next=this->_next,this]()mutable{
-                        delete(this);
+                        _local_flow_pool<flow<_A,_R,startor>>().destroy(this);
                         r._flow->_next=next;
                         r.submit();
                     };
@@ -283,21 +284,21 @@ namespace reactor{
             if constexpr (hana::equal(hana::type_c<_R>,hana::type_c<void>)){
                 _func();
                 return [next=this->_next,this]()mutable{
-                    delete(this);
+                    _local_flow_pool<flow<void,_R,startor>>().destroy(this);
                     next->active();
                 };
             }
             else{
                 if constexpr(hana::equal(hana::type_c<_R>,hana::type_c<typename _compute_flow_res_type_<_R>::_T_>)){
                     return [r=std::forward<_R>(_func()),next=this->_next,this]()mutable{
-                        delete(this);
+                        _local_flow_pool<flow<void,_R,startor>>().destroy(this);
                         if(next)
                             next->active(std::forward<_R>(r));
                     };
                 }
                 else{
                     return [r=std::forward<_R>(_func()),next=this->_next,this]()mutable{
-                        delete(this);
+                        _local_flow_pool<flow<void,_R,startor>>().destroy(this);
                         r._flow->_next=next;
                         r.submit();
                     };
@@ -375,7 +376,7 @@ namespace reactor{
     class flow_exception_handler:public flow<_A,_A,false>{
     public:
         explicit flow_exception_handler(typename flow<_A,_A,false>::exception_handler_res_type&& f)
-        :flow<_A,_A,false>([](_A&& a){ return std::forward<_A>(a);}){
+                :flow<_A,_A,false>([](_A&& a){ return std::forward<_A>(a);}){
             this->_exception_func=std::forward<typename flow<_A,_A,false>::exception_handler_res_type&&>(f);
         }
     };
@@ -410,14 +411,14 @@ namespace reactor{
             this->_next->set_schedule_context(this->_rc_);
             if(this->_rc_==hw::get_thread_cpu_id()){
                 this->_next->active(std::forward<_A>(a));
-                delete this;
+                _local_flow_pool<cpu_change_flow<_A,false>>().destroy(this);
             }
             else{
                 schedule_to<hw::cpu_core>::apply(this->_rc_,[a=std::forward<_A>(a),next=this->_next]()mutable{
                     if(next)
                         next->active(std::forward<_A>(a));
                 });
-                delete(this);
+                _local_flow_pool<cpu_change_flow<_A,false>>().destroy(this);
             }
         }
     };
@@ -438,7 +439,7 @@ namespace reactor{
                 if(next)
                     next->active(std::forward<_A>(a));
             });
-            delete(this);
+            _local_flow_pool<cpu_change_flow<_A,true>>().destroy(this);
         }
         void
         active(_A&& a)override{
@@ -447,14 +448,14 @@ namespace reactor{
             this->_next->set_schedule_context(this->_rc_);
             if(this->_rc_==hw::get_thread_cpu_id()){
                 this->_next->active(std::forward<_A>(a));
-                delete this;
+                _local_flow_pool<cpu_change_flow<_A,true>>().destroy(this);
             }
             else{
                 schedule_to<hw::cpu_core>::apply(this->_rc_,[a=std::forward<_A>(a),next=this->_next]()mutable{
                     if(next)
                         next->active(std::forward<_A>(a));
                 });
-                delete(this);
+                _local_flow_pool<cpu_change_flow<_A,true>>().destroy(this);
             }
         }
     };
@@ -474,7 +475,8 @@ namespace reactor{
                 if(next)
                     next->active();
             });
-            delete(this);
+
+            _local_flow_pool<cpu_change_flow<void,true>>().destroy(this);
         }
         void
         active()override{
@@ -483,14 +485,14 @@ namespace reactor{
             this->_next->set_schedule_context(this->_rc_);
             if(this->_rc_==hw::get_thread_cpu_id()){
                 this->_next->active();
-                delete this;
+                _local_flow_pool<cpu_change_flow<void,true>>().destroy(this);
             }
             else{
                 schedule_to<hw::cpu_core>::apply(this->_rc_,[next=this->_next]()mutable{
                     if(next)
                         next->active();
                 });
-                delete(this);
+                _local_flow_pool<cpu_change_flow<void,true>>().destroy(this);
             }
         }
     };
@@ -512,14 +514,14 @@ namespace reactor{
             this->_next->set_schedule_context(this->_rc_);
             if(this->_rc_==hw::get_thread_cpu_id()){
                 this->_next->active();
-                delete this;
+                _local_flow_pool<cpu_change_flow<void,false>>().destroy(this);
             }
             else{
                 schedule_to<hw::cpu_core>::apply(this->_rc_,[next=this->_next]()mutable{
                     if(next)
                         next->active();
                 });
-                delete(this);
+                _local_flow_pool<cpu_change_flow<void,false>>().destroy(this);
             }
         }
     };
@@ -532,7 +534,7 @@ namespace reactor{
         template <typename _F,typename _R=std::result_of_t<_F(typename _compute_flow_res_type_<_V>::_T_&&)>>
         flow_builder<typename _compute_flow_res_type_<_R>::_T_>
         then(_F &&f, const typename next_able<_V>::_running_context_type_ &c){
-            auto res=new flow<_V,_R,false>(std::forward<_F>(f));
+            auto res=_local_flow_pool<flow<_V,_R,false>>().construct(std::forward<_F>(f));
             res->set_schedule_context(c);
             res->_prev=_flow;
             _flow->_next=res;
@@ -556,7 +558,7 @@ namespace reactor{
         when_exception(_F &&f){
             using namespace boost;
             static_assert(hana::equal(hana::type_c<_R>,hana::type_c<std::optional<_V>>));
-            auto res=new flow_exception_handler<_V>(std::forward<_F>(f));
+            auto res=_local_flow_pool<flow_exception_handler<_V>>().construct(std::forward<_F>(f));
             res->set_schedule_context(next_able<_V>::_default_running_context_);
             res->_prev=_flow;
             _flow->_next=res;
@@ -564,7 +566,7 @@ namespace reactor{
         }
         flow_builder<_V>
         at_cpu(hw::cpu_core cpu){
-            cpu_change_flow<_V,false>* res=new cpu_change_flow<_V,false>(cpu);
+            cpu_change_flow<_V,false>* res=_local_flow_pool<cpu_change_flow<_V,false>>().construct(cpu);
             res->_prev=_flow;
             _flow->_next=res;
             return flow_builder<_V>(res);
@@ -577,7 +579,7 @@ namespace reactor{
         template <typename _F,typename _R=std::result_of_t<_F()>>
         flow_builder<typename _compute_flow_res_type_<_R>::_T_>
         then(_F &&f, const typename next_able<void>::_running_context_type_ &c){
-            auto res=new flow<void,_R,false>(std::forward<_F>(f));
+            auto res=_local_flow_pool<flow<void,_R,false>>().construct(std::forward<_F>(f));
             res->set_schedule_context(c);
             res->_prev=_flow;
             _flow->_next=res;
@@ -599,7 +601,7 @@ namespace reactor{
         template <typename _F,typename _R=std::result_of_t<_F(std::exception_ptr)>>
         flow_builder<void>
         when_exception(_F &&f){
-            auto res=new flow_exception_handler<void>(std::forward<_F>(f));
+            auto res=_local_flow_pool<flow_exception_handler<void>>().construct(std::forward<_F>(f));
             res->set_schedule_context(next_able<void>::_default_running_context_);
             res->_prev=_flow;
             _flow->_next=res;
@@ -607,7 +609,7 @@ namespace reactor{
         }
         flow_builder<void>
         at_cpu(hw::cpu_core cpu){
-            cpu_change_flow<void,false>* res=new cpu_change_flow<void,false>(cpu);
+            cpu_change_flow<void,false>* res=_local_flow_pool<cpu_change_flow<void,false>>().construct(cpu);
             res->_prev=_flow;
             _flow->_next=res;
             return flow_builder<void>(res);
@@ -618,16 +620,16 @@ namespace reactor{
     template <typename _A>
     auto
     at_cpu(hw::cpu_core cpu,_A&& a){
-        return flow_builder(new cpu_change_flow<_A,true>(cpu,std::forward<_A>(a)));
+        return flow_builder(_local_flow_pool<cpu_change_flow<_A,true>>().construct(cpu,std::forward<_A>(a)));
     }
     auto
     at_cpu(hw::cpu_core cpu){
-        return flow_builder(new cpu_change_flow<void,true>(cpu));
+        return flow_builder(_local_flow_pool<cpu_change_flow<void,true>>().construct(cpu));
     }
     template <typename _A,typename _F>
     auto
     at_ctx(_F &&f, typename next_able<_A>::_running_context_type_ &c = next_able<_A>::_default_running_context_){
-        return flow_builder(new flow<_A,std::result_of_t<_F(_A&&)>,true>(std::forward<_F>(f),c));
+        return flow_builder(_local_flow_pool<flow<_A,std::result_of_t<_F(_A&&)>,true>>().construct(std::forward<_F>(f),c));
     }
 }
 #endif //PROJECT_FLOW_HH

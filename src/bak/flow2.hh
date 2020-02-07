@@ -533,7 +533,7 @@ namespace reactor{
         template <typename _F,typename _R=std::result_of_t<_F(typename _compute_flow_res_type_<_V>::_T_&&)>>
         flow_builder<typename _compute_flow_res_type_<_R>::_T_>
         then(_F &&f, const typename next_able<_V>::_running_context_type_ &c){
-            auto res=construct<flow<_V,_R,false>>(std::forward<_F>(f));
+            auto res=new flow<_V,_R,false>(std::forward<_F>(f));
             res->set_schedule_context(c);
             res->_prev=_flow;
             _flow->_next=res;
@@ -557,7 +557,7 @@ namespace reactor{
         when_exception(_F &&f){
             using namespace boost;
             static_assert(hana::equal(hana::type_c<_R>,hana::type_c<std::optional<_V>>));
-            auto res=construct<flow_exception_handler<_V>>(std::forward<_F>(f));
+            auto res=new flow_exception_handler<_V>(std::forward<_F>(f));
             res->set_schedule_context(next_able<_V>::_default_running_context_);
             res->_prev=_flow;
             _flow->_next=res;
@@ -565,7 +565,7 @@ namespace reactor{
         }
         flow_builder<_V>
         at_cpu(hw::cpu_core cpu){
-            cpu_change_flow<_V,false>* res=construct<cpu_change_flow<_V,false>>(cpu);
+            cpu_change_flow<_V,false>* res=new cpu_change_flow<_V,false>(cpu);
             res->_prev=_flow;
             _flow->_next=res;
             return flow_builder<_V>(res);
@@ -578,7 +578,7 @@ namespace reactor{
         template <typename _F,typename _R=std::result_of_t<_F()>>
         flow_builder<typename _compute_flow_res_type_<_R>::_T_>
         then(_F &&f, const typename next_able<void>::_running_context_type_ &c){
-            auto res=construct<flow<void,_R,false>(std::forward<_F>>(f));
+            auto res=new flow<void,_R,false>(std::forward<_F>(f));
             res->set_schedule_context(c);
             res->_prev=_flow;
             _flow->_next=res;
@@ -600,7 +600,7 @@ namespace reactor{
         template <typename _F,typename _R=std::result_of_t<_F(std::exception_ptr)>>
         flow_builder<void>
         when_exception(_F &&f){
-            auto res=construct<flow_exception_handler<void>>(std::forward<_F>(f));
+            auto res=new flow_exception_handler<void>(std::forward<_F>(f));
             res->set_schedule_context(next_able<void>::_default_running_context_);
             res->_prev=_flow;
             _flow->_next=res;
@@ -608,7 +608,7 @@ namespace reactor{
         }
         flow_builder<void>
         at_cpu(hw::cpu_core cpu){
-            cpu_change_flow<void,false>* res=construct<cpu_change_flow<void,false>>(cpu);
+            cpu_change_flow<void,false>* res=new cpu_change_flow<void,false>(cpu);
             res->_prev=_flow;
             _flow->_next=res;
             return flow_builder<void>(res);
@@ -619,16 +619,16 @@ namespace reactor{
     template <typename _A>
     auto
     at_cpu(hw::cpu_core cpu,_A&& a){
-        return flow_builder(construct<cpu_change_flow<_A,true>>(cpu,std::forward<_A>(a)));
+        return flow_builder(new cpu_change_flow<_A,true>(cpu,std::forward<_A>(a)));
     }
     auto
     at_cpu(hw::cpu_core cpu){
-        return flow_builder(construct<cpu_change_flow<void,true>(cpu)>);
+        return flow_builder(new cpu_change_flow<void,true>(cpu));
     }
     template <typename _A,typename _F>
     auto
     at_ctx(_F &&f, typename next_able<_A>::_running_context_type_ &c = next_able<_A>::_default_running_context_){
-        return flow_builder(construct<flow<_A,std::result_of_t<_F(_A&&)>,true>>(std::forward<_F>(f),c));
+        return flow_builder(new flow<_A,std::result_of_t<_F(_A&&)>,true>(std::forward<_F>(f),c));
     }
 }
 #endif //PROJECT_FLOW_HH

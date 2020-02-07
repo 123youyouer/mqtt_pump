@@ -4,7 +4,7 @@
 
 #ifndef PROJECT_G_DEFINE_HH
 #define PROJECT_G_DEFINE_HH
-
+#include <memory>
 #define PUMP_INLINE [[gnu::always_inline]][[gnu::hot]] inline
 //#define PUMP_INLINE
 
