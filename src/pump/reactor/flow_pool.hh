@@ -8,9 +8,22 @@
 #include <iostream>
 #include <list>
 #include <boost/noncopyable.hpp>
+#include <boost/hana.hpp>
 #include <utils/g_define.hh>
 #include <utils/plf_list.hh>
 namespace reactor{
+    template <typename _T_,typename ..._A_>
+    constexpr auto
+    maybe_reinit=boost::hana::sfinae([](auto&& t,_A_&... a)->decltype(t->reinit(std::forward<_A_>(a)...)){
+        return t->reinit(std::forward<_A_>(a)...);
+    });
+
+    template <typename _T_,typename ..._A_>
+    constexpr _T_*
+    reinit_or_create(_T_* t,_A_&&... a){
+        return (maybe_reinit<_T_,_A_...>(t,std::forward<_A_>(a)...).value_or(new(t)_T_(std::forward<_A_>(a)...)));
+    }
+
     template<typename _T_>
     struct
     local_flow_pool:boost::noncopyable{
@@ -19,6 +32,7 @@ namespace reactor{
         destroy(_T_ *t){
             flow_pool.push_back(t);
         }
+
         template <typename ..._A_>
         PUMP_INLINE _T_*
         construct(_A_&&... args){
@@ -28,8 +42,7 @@ namespace reactor{
             else{
                 _T_* t=(flow_pool.front());
                 flow_pool.pop_front();
-                //return t;
-                return new(t)_T_(std::forward<_A_>(args)...);
+                return reinit_or_create<_T_,_A_...>(t,std::forward<_A_>(args)...);
             }
         }
         local_flow_pool(){

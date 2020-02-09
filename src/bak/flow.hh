@@ -209,8 +209,7 @@ namespace reactor{
         }
         utils::noncopyable_function<_R(_A&&)> _func;
 
-        [[gnu::always_inline]][[gnu::hot]]
-        void
+        PUMP_INLINE void
         submit()override{
             if constexpr (!startor){
                 return this->_prev->submit();
@@ -226,8 +225,7 @@ namespace reactor{
             }
         }
 
-        [[gnu::always_inline]][[gnu::hot]]
-        void
+        PUMP_INLINE void
         active(_A&& a) override {
             try {
                 if constexpr (!startor){
@@ -318,8 +316,7 @@ namespace reactor{
         }
         utils::noncopyable_function<_R()> _func;
 
-        [[gnu::always_inline]][[gnu::hot]]
-        void
+        PUMP_INLINE void
         submit() override {
             if constexpr (!startor)
                 return this->_prev->submit();
@@ -328,8 +325,7 @@ namespace reactor{
             });
         }
 
-        [[gnu::always_inline]][[gnu::hot]]
-        void
+        PUMP_INLINE void
         active() override {
             try{
                 if constexpr (!startor){

@@ -55,23 +55,26 @@ namespace reactor{
     class next_able:public schedule_able<_V>{
     public:
         prev_able<_V>* _prev;
-        bool immediate;
         bool is_exception_handler;
         virtual void active(_V&& v)=0;
         virtual void handle_exception(std::exception_ptr ex)=0;
-        next_able():immediate(false),is_exception_handler(false),_prev(nullptr){}
+        next_able():is_exception_handler(false),_prev(nullptr){}
     };
 
 
     template <>
     class next_able<void>:public schedule_able<void>{
     public:
-        bool immediate;
         prev_able<void >* _prev;
+        bool is_exception_handler;
         virtual void active()=0;
         virtual void handle_exception(std::exception_ptr ex)=0;
-        next_able():immediate(false),_prev(nullptr){}
+        next_able():_prev(nullptr),is_exception_handler(false){}
     };
+
+    constexpr auto
+    has_default_running_context_ = boost::hana::is_valid([](auto t)noexcept -> decltype((void)decltype(t)::type::_default_running_context_){
+    });
 
     template <typename _A,typename _R,bool startor=false>
     class flow_base
@@ -82,7 +85,18 @@ namespace reactor{
         utils::noncopyable_function<std::optional<_R>(std::exception_ptr)> _exception_func;
     public:
         using exception_handler_res_type=utils::noncopyable_function<std::optional<_R>(std::exception_ptr)>;
-        void handle_exception(std::exception_ptr ex)override{
+        flow_base()= default;
+        void
+        reinit(){
+            this->is_exception_handler=false;
+            this->_prev= nullptr;
+            this->_next= nullptr;
+            if constexpr (has_default_running_context_(boost::hana::type_c<schedule_able<typename _compute_flow_res_type_<_A>::_T_>>)){
+                this->_rc_=schedule_able<typename _compute_flow_res_type_<_A>::_T_>::_default_running_context_;
+            }
+        }
+        void
+        handle_exception(std::exception_ptr ex)override{
             using namespace boost;
             if(_exception_func){
                 std::optional<_R> res= _exception_func(std::forward<std::exception_ptr>(ex));
@@ -117,7 +131,8 @@ namespace reactor{
                 }
             }
         }
-        virtual ~flow_base()= default;
+        virtual
+        ~flow_base()= default;
     };
 
     template <typename _A,bool startor>
@@ -129,6 +144,16 @@ namespace reactor{
         utils::noncopyable_function<bool(std::exception_ptr)> _exception_func;
     public:
         using exception_handler_res_type=utils::noncopyable_function<bool(std::exception_ptr)>;
+        flow_base()= default;
+        void
+        reinit(){
+            this->is_exception_handler=false;
+            this->_prev= nullptr;
+            this->_next= nullptr;
+            if constexpr (has_default_running_context_(boost::hana::type_c<schedule_able<typename _compute_flow_res_type_<_A>::_T_>>)){
+                this->_rc_=schedule_able<typename _compute_flow_res_type_<_A>::_T_>::_default_running_context_;
+            }
+        }
         void handle_exception(std::exception_ptr ex)override{
             using namespace boost;
             if(_exception_func){
@@ -194,7 +219,7 @@ namespace reactor{
         }
     public:
         explicit
-        flow()= default;
+        flow()= delete;
         explicit
         flow(utils::noncopyable_function<_R(_A&&)>&& f)
                 :_func(std::forward<utils::noncopyable_function<_R(_A&&)>>(f))
@@ -207,10 +232,23 @@ namespace reactor{
         {
             this->set_schedule_context(c);
         }
+        auto
+        reinit(utils::noncopyable_function<_R(_A&&)>&& f){
+            flow_base<_A,_R,startor>::reinit();
+            this->_func=std::forward<utils::noncopyable_function<_R(_A&&)>>(f);
+            return this;
+        }
+        auto
+        reinit(utils::noncopyable_function<_R(_A&&)>&& f,typename next_able<_A>::_running_context_type_& c){
+            flow_base<_A,_R,startor>::reinit();
+            this->_func=std::forward<utils::noncopyable_function<_R(_A&&)>>(f);
+            this->set_schedule_context(c);
+            return this;
+        }
+
         utils::noncopyable_function<_R(_A&&)> _func;
 
-        [[gnu::always_inline]][[gnu::hot]]
-        void
+        PUMP_INLINE void
         submit()override{
             if constexpr (!startor){
                 return this->_prev->submit();
@@ -226,8 +264,7 @@ namespace reactor{
             }
         }
 
-        [[gnu::always_inline]][[gnu::hot]]
-        void
+        PUMP_INLINE void
         active(_A&& a) override {
             try {
                 if constexpr (!startor){
@@ -306,7 +343,7 @@ namespace reactor{
             }
         }
     public:
-        explicit flow()= default;
+        explicit flow()= delete;
         explicit flow(utils::noncopyable_function<_R()>&& f)
                 :_func(std::forward<utils::noncopyable_function<_R()>>(f))
                 ,flow_base<void,_R,startor>() {}
@@ -316,10 +353,23 @@ namespace reactor{
         {
             this->set_schedule_context(c);
         }
+        auto
+        reinit(utils::noncopyable_function<_R()>&& f){
+            flow_base<void,_R,startor>::reinit();
+            this->_func=std::forward<utils::noncopyable_function<_R()>>(f);
+            return this;
+        }
+        auto
+        reinit(utils::noncopyable_function<_R()>&& f,typename next_able<void>::_running_context_type_& c){
+            flow_base<void,_R,startor>::reinit();
+            this->_func=std::forward<utils::noncopyable_function<_R()>>(f);
+            this->set_schedule_context(c);
+            return this;
+        }
+
         utils::noncopyable_function<_R()> _func;
 
-        [[gnu::always_inline]][[gnu::hot]]
-        void
+        PUMP_INLINE void
         submit() override {
             if constexpr (!startor)
                 return this->_prev->submit();
@@ -328,8 +378,7 @@ namespace reactor{
             });
         }
 
-        [[gnu::always_inline]][[gnu::hot]]
-        void
+        PUMP_INLINE void
         active() override {
             try{
                 if constexpr (!startor){
@@ -379,6 +428,12 @@ namespace reactor{
                 :flow<_A,_A,false>([](_A&& a){ return std::forward<_A>(a);}){
             this->_exception_func=std::forward<typename flow<_A,_A,false>::exception_handler_res_type&&>(f);
         }
+        auto
+        reinit(typename flow<_A,_A,false>::exception_handler_res_type&& f){
+            flow<_A,_A,false>::reinit([](_A&& a){ return std::forward<_A>(a);});
+            this->_exception_func=std::forward<typename flow<_A,_A,false>::exception_handler_res_type&&>(f);
+            return this;
+        }
     };
     template <>
     class flow_exception_handler<void>:public flow<void,void,false>{
@@ -387,6 +442,12 @@ namespace reactor{
         flow_exception_handler(typename flow<void,void,false>::exception_handler_res_type&& f)
                 :flow<void,void,false>([](){ return;}){
             this->_exception_func=std::forward<typename flow<void,void,false>::exception_handler_res_type&&>(f);
+        }
+        auto
+        reinit(typename flow<void,void,false>::exception_handler_res_type&& f){
+            flow<void,void,false>::reinit([](){ return ;});
+            this->_exception_func=std::forward<typename flow<void,void,false>::exception_handler_res_type&&>(f);
+            return this;
         }
     };
     template <typename _A,bool startor>
@@ -399,6 +460,12 @@ namespace reactor{
         explicit
         cpu_change_flow(hw::cpu_core cpu):flow_base<_A,_A,false>(){
             this->set_schedule_context(cpu);
+        }
+        auto
+        reinit(hw::cpu_core cpu){
+            flow_base<_A,_A,false>::reinit();
+            this->set_schedule_context(cpu);
+            return this;
         }
         void
         submit()override{
@@ -429,6 +496,13 @@ namespace reactor{
         explicit
         cpu_change_flow(hw::cpu_core cpu,_A&& a):flow_base<_A,_A,true>(),_a(a){
             this->set_schedule_context(cpu);
+        }
+        auto
+        reinit(hw::cpu_core cpu,_A&& a){
+            flow_base<_A,_A,true>::reinit();
+            this->_a=a;
+            this->set_schedule_context(cpu);
+            return this;
         }
         void
         submit()override{
@@ -466,6 +540,12 @@ namespace reactor{
         cpu_change_flow(hw::cpu_core cpu):flow_base<void,void,true>(){
             this->set_schedule_context(cpu);
         }
+        auto
+        reinit(hw::cpu_core cpu){
+            flow_base<void,void,true>::reinit();
+            this->set_schedule_context(cpu);
+            return this;
+        }
         void
         submit()override{
             if(!this->_next)
@@ -502,6 +582,12 @@ namespace reactor{
         explicit
         cpu_change_flow(hw::cpu_core cpu):flow_base<void,void,false>(){
             this->set_schedule_context(cpu);
+        }
+        auto
+        reinit(hw::cpu_core& cpu){
+            flow_base<void,void,false>::reinit();
+            this->set_schedule_context(cpu);
+            return this;
         }
         void
         submit()override{

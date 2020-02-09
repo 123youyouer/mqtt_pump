@@ -72,21 +72,26 @@ test(int cpu,int count){
     reactor::at_cpu(hw::cpu_core(cpu))
             .then([](){
                 cache_on_thread.push("1",std::make_shared<int>(1));
+                cache_on_thread.push("1",std::make_shared<int>(2));
             })
             .then([](){
                 cache_on_thread.push("2",std::make_shared<int>(1));
+                cache_on_thread.push("2",std::make_shared<int>(2));
             })
             .then([](){
                 cache_on_thread.push("3",std::make_shared<int>(1));
+                cache_on_thread.push("3",std::make_shared<int>(2));
             })
             .then([](){
                 cache_on_thread.push("4",std::make_shared<int>(1));
+                cache_on_thread.push("4",std::make_shared<int>(2));
             })
             .then([](){
                 cache_on_thread.push("5",std::make_shared<int>(1));
+                cache_on_thread.push("5",std::make_shared<int>(2));
             })
             .then([cpu,i=count](){
-                if((i)<2000000){
+                if((i)<200){
                     test(cpu,i+1);
                 }
                 else{
@@ -111,7 +116,8 @@ int main(){
     t=timer::now_tick();
     std::cout<<t<<std::endl;
     for(int i=0;i<hw::the_cpu_count;++i){
-        test(i,0);
+        for(int j=0;j<10000;j++)
+            test(i,0);
     }
     /*
     reactor::at_cpu(hw::cpu_core::_01)
