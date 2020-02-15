@@ -5,8 +5,8 @@
 #ifndef PROJECT_GLOBAL_TASK_SCHEDULE_CENTER_HH
 #define PROJECT_GLOBAL_TASK_SCHEDULE_CENTER_HH
 
-#include <reactor/task.hh>
-#include <hw/cpu.hh>
+#include <pump/reactor/task.hh>
+#include <pump/hw/cpu.hh>
 namespace reactor{
 
     template <typename _TASK_TYPE>

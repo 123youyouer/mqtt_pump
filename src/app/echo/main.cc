@@ -1,12 +1,13 @@
 //
 // Created by null on 20-2-1.
 //
-
-#include <net/tcp_session.hh>
-#include <pump.hh>
-#include <utils/lru_cache.hh>
-#include <data/unaligned_cast.hh>
-
+#include <boost/program_options.hpp>
+#include <pump/net/tcp_session.hh>
+#include <pump/logger/logger.hh>
+#include <pump/utils/lru_cache.hh>
+#include <pump/data/unaligned_cast.hh>
+#include <pump/timer/timer_set.hh>
+#include <pump/pump.hh>
 #pragma clang diagnostic push
 #pragma ide diagnostic ignored "InfiniteRecursion"
 
@@ -53,7 +54,7 @@ void run_echo(net::listener<_PORT_>& l){
 #pragma clang diagnostic pop
 
 #include <boost/intrusive/list.hpp>
-#include <data/cahce.hh>
+#include <pump/data/cahce.hh>
 class tag_1{};
 using lm=boost::intrusive::link_mode<boost::intrusive::auto_unlink>;
 using BaseHook = boost::intrusive::list_base_hook<lm>;
@@ -116,7 +117,25 @@ test(int cpu,int count){
             .submit();
 }
 
-int main(){
+int main(int argc, char * argv[]){
+    boost::program_options::options_description ops;
+
+    std::string config;
+
+    ops.add_options()
+            ("cofig",boost::program_options::value<std::string>(&config)->default_value("config.ini"));
+
+    boost::program_options::variables_map vm;
+
+    try{
+        boost::program_options::store(boost::program_options::parse_command_line(argc, argv, ops), vm);
+    }
+    catch(...){
+        std::cout << "输入的参数中存在未定义的选项！\n";
+        return 0;
+    }
+
+
     hw::pin_this_thread(0);
     sleep(1);
     //hw::the_cpu_count=1;

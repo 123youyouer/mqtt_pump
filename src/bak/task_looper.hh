@@ -9,7 +9,7 @@
 #include <type_traits>
 #include <functional>
 #include <iostream>
-#include <hw/cpu.hh>
+#include <pump/hw/cpu.hh>
 #include "task_channel.hh"
 
 

@@ -8,13 +8,13 @@
 #include <boost/noncopyable.hpp>
 #include <boost/heap/priority_queue.hpp>
 #include <boost/optional.hpp>
-#include <utils/noncopyable_function.hh>
+#include <pump/utils/noncopyable_function.hh>
 #include <sys/time.h>
 #include <strings.h>
-#include <hw/cpu.hh>
-#include <reactor/flow.hh>
+#include <pump/hw/cpu.hh>
+#include <pump/reactor/flow.hh>
 #include <iostream>
-#include <threading/threading_state.hh>
+#include <pump/threading/threading_state.hh>
 
 namespace timer{
     uint64_t

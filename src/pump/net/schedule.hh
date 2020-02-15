@@ -6,8 +6,8 @@
 #define PROJECT_SCHEDULE_HH
 
 #include <boost/noncopyable.hpp>
-#include <utils/noncopyable_function.hh>
-#include <moodycamel/concurrentqueue.h>
+#include <pump/utils/noncopyable_function.hh>
+#include <pump/moodycamel/concurrentqueue.h>
 
 namespace reactor{
     template <typename _T>

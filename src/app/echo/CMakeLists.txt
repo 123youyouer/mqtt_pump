@@ -8,4 +8,4 @@ add_executable(echo
         )
 
 target_link_libraries(echo
-        -lhwloc -pthread -laio)
+        -lhwloc -pthread -laio -lboost_program_options)

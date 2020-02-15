@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include "reactor/atomicops.h"
+#include <pump/reactor/atomicops.h>
 #include <type_traits>
 #include <utility>
 #include <cassert>

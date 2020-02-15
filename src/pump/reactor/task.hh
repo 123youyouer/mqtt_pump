@@ -7,9 +7,9 @@
 
 #include <boost/hana.hpp>
 #include <boost/noncopyable.hpp>
-#include <utils/noncopyable_function.hh>
-#include <moodycamel/concurrentqueue.h>
-#include <moodycamel/readerwriterqueue.h>
+#include <pump/utils/noncopyable_function.hh>
+#include <pump/moodycamel/concurrentqueue.h>
+#include <pump/moodycamel/readerwriterqueue.h>
 
 using namespace boost::hana::literals;
 
