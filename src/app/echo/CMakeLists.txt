@@ -1,7 +1,7 @@
 project(echo)
 
 include_directories(${PROJECT_ROOT}/src/app)
-
+add_compile_options("-O3")
 
 add_executable(echo
         main.cc

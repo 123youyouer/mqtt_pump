@@ -1,630 +1,314 @@
 //
-// Created by null on 19-12-27.
+// Created by anyone on 20-2-17.
 //
 
 #ifndef PROJECT_FLOW_HH
 #define PROJECT_FLOW_HH
+#include <iostream>
+#include <type_traits>
+#include <memory>
+#include <variant>
+#include <list>
+#include <boost/noncopyable.hpp>
+#include <common/noncopyable_function.hh>
+#include <common/apply.hh>
 #include <boost/hana.hpp>
-#include <pump/hw/cpu.hh>
-#include <pump/utils/noncopyable_function.hh>
-#include <pump/reactor/schedule.hh>
-#include <pump/reactor/flow_state.hh>
-#include <pump/reactor/flow_pool.hh>
-namespace reactor{
-    template <typename _A,typename _R,bool startor>
-    class flow;
+namespace engine{
+    namespace reactor{
 
-    template <typename _T>
-    class flow_builder;
+        namespace bha=boost::hana;
 
-    template <typename T>
-    class _compute_flow_res_type_{
-    public:
-        using _T_ =T;
-    };
+        template <typename ..._ARG_>
+        class flow_implent;
+        template <typename ..._ARG_>
+        class flow_builder;
 
-    template <typename T>
-    class _compute_flow_res_type_<std::optional<T>>{
-    public:
-        using _T_ =T;
-    };
-
-    template <typename _A,typename _R,bool startor>
-    class _compute_flow_res_type_<flow<_A,_R,startor>*>{
-    public:
-        using _T_ =_R;
-    };
-    template <typename _V>
-    class _compute_flow_res_type_<flow_builder<_V>>{
-    public:
-        using _T_ =_V;
-    };
-
-    template <typename _V>
-    class next_able;
-
-    template <typename _V>
-    class prev_able{
-    public:
-        next_able<_V>* _next;
-        virtual void submit()=0;
-        prev_able():_next(nullptr){}
-    };
-
-    template <typename _V>
-    class next_able:public schedule_able<_V>{
-    public:
-        prev_able<_V>* _prev;
-        bool immediate;
-        bool is_exception_handler;
-        virtual void active(_V&& v)=0;
-        virtual void handle_exception(std::exception_ptr ex)=0;
-        next_able():immediate(false),is_exception_handler(false),_prev(nullptr){}
-    };
+        template <typename ...T>
+        class remove_flow_implent_shell{
+        public:
+            using _T_ =bha::tuple<T...>;
+        };
+        template <typename T>
+        class remove_flow_implent_shell<T>{
+        public:
+            using _T_ =T;
+        };
+        template <typename T>
+        class remove_flow_implent_shell<flow_implent<T>>{
+        public:
+            using _T_ =T;
+        };
+        template <typename T>
+        class remove_flow_implent_shell<flow_builder<T>>{
+        public:
+            using _T_ =T;
+        };
 
 
-    template <>
-    class next_able<void>:public schedule_able<void>{
-    public:
-        bool immediate;
-        prev_able<void >* _prev;
-        virtual void active()=0;
-        virtual void handle_exception(std::exception_ptr ex)=0;
-        next_able():immediate(false),_prev(nullptr){}
-    };
-
-    template <typename _A,typename _R,bool startor=false>
-    class flow_base
-            :public prev_able<typename _compute_flow_res_type_<_R>::_T_>
-                    ,public next_able<typename _compute_flow_res_type_<_A>::_T_>
-                    ,public boost::noncopyable{
-    protected:
-        utils::noncopyable_function<std::optional<_R>(std::exception_ptr)> _exception_func;
-    public:
-        using exception_handler_res_type=utils::noncopyable_function<std::optional<_R>(std::exception_ptr)>;
-        void handle_exception(std::exception_ptr ex)override{
-            using namespace boost;
-            if(_exception_func){
-                std::optional<_R> res= _exception_func(std::forward<std::exception_ptr>(ex));
-                if(!res)
-                    return;
-                if(!this->_next)
-                    return;
-                if constexpr(hana::equal(hana::type_c<_R>,hana::type_c<typename _compute_flow_res_type_<_R>::_T_>)){
-                    this->_next->active(std::forward<_R>(res.value()));
-                    delete this;
+        template<typename _FUNC_,typename ..._ARG_>
+        class flow_type_compute:boost::noncopyable{
+        public:
+            flow_type_compute()= delete;
+            flow_type_compute(flow_type_compute&&)= delete;
+        public:
+            static constexpr auto
+            compute_this_func_res_type(){
+                if constexpr (bha::equal(
+                        bha::type_c<bha::tuple<_ARG_...>>,
+                        bha::type_c<bha::tuple<void>>)){
+                    return bha::type_c<std::result_of_t<_FUNC_()>>;
                 }
                 else{
-                    res.value()._flow->_next=this->_next;
-                    delete this;
-                    res.value().submit();
+                    return bha::type_c<std::result_of_t<_FUNC_(_ARG_&&...)>>;
                 }
             }
-            else if(this->_next){
-                this->_next->handle_exception(std::forward<std::exception_ptr>(ex));
-                delete this;
-            }
-            else{
-                try {
-                    if(ex)
-                        std::rethrow_exception(ex);
-                }
-                catch (const std::exception& e){
-                    std::cout<<e.what()<<std::endl;
-                }
-                catch (...){
-                    std::cout<<"cant catch exception in flow::when_exception"<<std::endl;
-                }
-            }
-        }
-        virtual ~flow_base()= default;
-    };
 
-    template <typename _A,bool startor>
-    class flow_base<_A,void,startor>
-            :public prev_able<typename _compute_flow_res_type_<void>::_T_>
-                    ,public next_able<typename _compute_flow_res_type_<_A>::_T_>
-                    ,public boost::noncopyable{
-    protected:
-        utils::noncopyable_function<bool(std::exception_ptr)> _exception_func;
-    public:
-        using exception_handler_res_type=utils::noncopyable_function<bool(std::exception_ptr)>;
-        void handle_exception(std::exception_ptr ex)override{
-            using namespace boost;
-            if(_exception_func){
-                bool res= _exception_func(std::forward<std::exception_ptr>(ex));
-                if(!res)
-                    return;
-                if(!this->_next)
-                    return;
-                this->_next->active();
-            }
-            else if(this->_next){
-                this->_next->handle_exception(std::forward<std::exception_ptr>(ex));
-                delete this;
-            }
-            else{
-                try {
-                    if(ex)
-                        std::rethrow_exception(ex);
-                }
-                catch (const std::exception& e){
-                    std::cout<<e.what()<<std::endl;
-                }
-                catch (...){
-                    std::cout<<"uncached exception!!!!!"<<std::endl;
-                }
-            }
-        }
-        virtual ~flow_base()= default;
-    };
-
-
-    template <typename _A,typename _R,bool startor=false>
-    class
-    flow:public flow_base<_A,_R,startor>{
-    private:
-        auto
-        build_active_function(_A&& a){
-            using namespace boost;
-            if constexpr (hana::equal(hana::type_c<_R>,hana::type_c<void>)){
-                _func(std::forward<_A>(a));
-                return [next=this->_next,this]()mutable{
-                    delete(this);
-                    if(next)
-                        next->active();
-                };
-            }
-            else{
-                if constexpr(hana::equal(hana::type_c<_R>,hana::type_c<typename _compute_flow_res_type_<_R>::_T_>)){
-                    return [r=std::forward<_R>(_func(std::forward<_A>(a))),next=this->_next,this]()mutable{
-                        delete(this);
-                        if(next)
-                            next->active(std::forward<_R>(r));
-                    };
+            static constexpr auto
+            compute_next_flow_implent_type(){
+                using res_type=typename remove_flow_implent_shell<typename decltype(compute_this_func_res_type())::type>::_T_ ;
+                if constexpr (std::is_same<void,res_type>::value){
+                    return bha::type_c<flow_implent<>>;
                 }
                 else{
-                    return [r=std::forward<_R>(_func(std::forward<_A>(a))),next=this->_next,this]()mutable{
-                        delete(this);
-                        r._flow->_next=next;
-                        r.submit();
-                    };
+                    return bha::type_c<flow_implent<res_type>>;
                 }
             }
-        }
-    public:
-        explicit
-        flow()= default;
-        explicit
-        flow(utils::noncopyable_function<_R(_A&&)>&& f)
-                :_func(std::forward<utils::noncopyable_function<_R(_A&&)>>(f))
-                ,flow_base<_A,_R,startor>()
-        {}
-        explicit
-        flow(utils::noncopyable_function<_R(_A&&)>&& f,typename next_able<_A>::_running_context_type_& c)
-                :_func(std::forward<utils::noncopyable_function<_R(_A&&)>>(f))
-                ,flow_base<_A,_R,startor>()
-        {
-            this->set_schedule_context(c);
-        }
-        utils::noncopyable_function<_R(_A&&)> _func;
-
-        PUMP_INLINE void
-        submit()override{
-            if constexpr (!startor){
-                return this->_prev->submit();
+            static constexpr auto
+            compute_next_flow_builder_type(){
+                using res_type=typename remove_flow_implent_shell<typename decltype(compute_this_func_res_type())::type>::_T_ ;
+                if constexpr (std::is_same<void,res_type>::value){
+                    return bha::type_c<flow_builder<>>;
+                }
+                else{
+                    return bha::type_c<flow_builder<res_type>>;
+                }
             }
-            else{
-                if constexpr (!boost::hana::equal(
-                        boost::hana::type_c<_running_context_type_none_>,
-                        boost::hana::type_c<typename schedule_able<_A>::_running_context_type_>)){
-                    schedule_to<typename schedule_able<_A>::_running_context_type_>::apply(this->_rc_,[this](_A&& a)mutable{
-                        this->active(std::forward<_A>(a));
+        };
+
+        template <typename ..._ARG_>
+        class flow_builder;
+
+        template <typename ..._ARG_>
+        class flow_implent:boost::noncopyable{
+            using _act_func_type_=common::noncopyable_function<void(_ARG_&&...)>;
+            using _sch_func_type_=common::noncopyable_function<void(_act_func_type_&&,_ARG_&&...)>;
+        protected:
+            _act_func_type_ _act_func_;
+            _sch_func_type_ _sch_func_;
+        public:
+            template <typename _FUNC_, typename _NEXT_>
+            void
+            assemble_act_func_(_FUNC_ &&f, _NEXT_ &&n);
+            template <typename _SCHD_>
+            void
+            assemble_sch_func_(_SCHD_* s){
+                _sch_func_=[s](_act_func_type_&& _f,_ARG_&&..._a)mutable{
+                    (*s)([_f=std::forward<_act_func_type_>(_f),_a=std::make_tuple(std::forward<_ARG_>(_a)...)]()mutable{
+                        common::apply(std::forward<_act_func_type_>(_f),std::forward<std::tuple<_ARG_...>>(_a));
                     });
-                }
-            }
-        }
-
-        PUMP_INLINE void
-        active(_A&& a) override {
-            try {
-                if constexpr (!startor){
-                    if(this->_next)
-                        schedule_to<typename schedule_able<_A>::_running_context_type_,typename schedule_able<_R>::_running_context_type_>
-                        ::apply(
-                                this->_rc_,
-                                this->_next->_rc_,
-                                build_active_function(std::forward<_A>(a))
-                        );
-                    else
-                        _func(std::forward<_A>(a));
-                }
-                else{
-                    if(this->_next){
-                        if constexpr (boost::hana::equal(
-                                boost::hana::type_c<typename schedule_able<_R>::_running_context_type_>,
-                                boost::hana::type_c<hw::cpu_core>
-                        )){
-                            if(hw::get_thread_cpu_id()==this->_next->_rc_){
-                                build_active_function(std::forward<_A>(a))();
-                            }
-                            else{
-                                schedule_to<typename schedule_able<_R>::_running_context_type_>
-                                ::apply(
-                                        this->_next->_rc_,
-                                        build_active_function(std::forward<_A>(a))
-                                );
-                            }
-                        }
-                        else{
-                            build_active_function(std::forward<_A>(a))();
-                        }
-                    }
-                    else{
-                        _func(std::forward<_A>(a));
-                    }
-                }
-            }
-            catch (...){
-                this->handle_exception(std::current_exception());
-            }
-
-
-        }
-    };
-
-    template <typename _R,bool startor>
-    class flow<void,_R,startor>:public flow_base<void,_R,startor>{
-    private:
-        auto
-        build_active_function(){
-            using namespace boost;
-            if constexpr (hana::equal(hana::type_c<_R>,hana::type_c<void>)){
-                _func();
-                return [next=this->_next,this]()mutable{
-                    delete(this);
-                    next->active();
                 };
             }
-            else{
-                if constexpr(hana::equal(hana::type_c<_R>,hana::type_c<typename _compute_flow_res_type_<_R>::_T_>)){
-                    return [r=std::forward<_R>(_func()),next=this->_next,this]()mutable{
-                        delete(this);
-                        if(next)
-                            next->active(std::forward<_R>(r));
-                    };
+
+            flow_implent()= default;
+        public:
+            void
+            active(_ARG_&&... args){
+                if(_act_func_)
+                    _sch_func_(std::forward<_act_func_type_>(_act_func_),std::forward<_ARG_>(args)...);
+            }
+            friend class flow_builder<_ARG_...>;
+        };
+
+        template <typename ..._IN_>
+        class schdule_center{
+        public:
+            virtual void operator()(common::noncopyable_function<void(_IN_&& ..._in)>&& f)=0;
+        };
+
+        class test_schdule final:public schdule_center<>{
+        public:
+            std::list<common::noncopyable_function<void()>> l;
+            void operator()(common::noncopyable_function<void()>&& f)final{
+                l.push_back(std::forward<common::noncopyable_function<void()>>(f));
+            }
+        };
+
+
+        template <typename ..._ARG_>
+        class flow_builder:boost::noncopyable{
+        public:
+            struct flow_builder_data{
+                common::noncopyable_function<void()> _begin_func_;
+                std::shared_ptr<flow_implent<_ARG_...>> _this_impl_;
+                schdule_center<>* _psch;
+                explicit
+                flow_builder_data(
+                        common::noncopyable_function<void()>&& _bf,
+                        schdule_center<>* sch,
+                        std::shared_ptr<flow_implent<_ARG_...>>& imp
+                ){
+                    _begin_func_=std::forward<common::noncopyable_function<void()>>(_bf);
+                    _psch=sch;
+                    _this_impl_=imp;
+                }
+                explicit
+                flow_builder_data()= default;
+            };
+
+            std::shared_ptr<flow_builder_data> _data;
+        public:
+            flow_builder(flow_builder&& o)noexcept{
+                _data=o._data;
+            }
+            flow_builder(const flow_builder&& o)noexcept{
+                _data=o._data;
+            }
+            explicit
+            flow_builder(
+                    common::noncopyable_function<void()>&& _bf,
+                    schdule_center<>* sch,
+                    std::shared_ptr<flow_implent<_ARG_...>>& imp){
+                _data=std::shared_ptr<flow_builder_data>(new flow_builder_data(std::forward<common::noncopyable_function<void()>>(_bf),sch,imp));
+            }
+
+            explicit
+            flow_builder(
+                    schdule_center<>* sch,
+                    std::shared_ptr<flow_implent<_ARG_...>>& imp)
+                    :_data(new flow_builder_data()){
+                _data->_psch=sch;
+                _data->_this_impl_=imp;
+            }
+            explicit
+            flow_builder(
+                    schdule_center<>* sch,
+                    std::shared_ptr<flow_implent<_ARG_...>>&& imp)
+                    :_data(new flow_builder_data()){
+                _data->_psch=sch;
+                _data->_this_impl_=imp;
+            }
+            template <typename _FUNC_>
+            auto
+            then(_FUNC_&& f){
+                using cp=flow_type_compute<_FUNC_,_ARG_...>;
+                using fi=typename decltype(cp::compute_next_flow_implent_type())::type;
+                using fb=typename decltype(cp::compute_next_flow_builder_type())::type;
+
+                auto _next=std::make_shared<fi>();
+                _data->_this_impl_->assemble_act_func_(
+                        std::forward<_FUNC_>(f),
+                        _next);
+                _data->_this_impl_->assemble_sch_func_(_data->_psch);
+                return fb(std::forward<common::noncopyable_function<void()>>(this->_data->_begin_func_),_data->_psch,_next);
+            }
+
+            void submit(){
+                _data->_begin_func_();
+            }
+            template<typename ..._IN_>
+            auto
+            to_schdule(schdule_center<_IN_...>* sch){
+                this->_data->_psch=sch;
+                return std::forward<flow_builder<_ARG_...>>(*this);
+            }
+
+            template<typename ..._IN_>
+            static auto
+            at_schdule(schdule_center<_IN_...>* sch){
+                auto x=flow_builder(sch,std::shared_ptr<flow_implent<_ARG_...>>(new flow_implent<_ARG_...>()));
+                x._data->_begin_func_=[sch,data=x._data]()mutable{
+                    (*sch)([data](_IN_&& ...in){
+                        data->_this_impl_->active(std::forward<_IN_>(in)...);
+                    });
+                };
+                return x;
+            }
+        };
+
+        template <typename ..._ARG_>
+        template <typename _FUNC_, typename _NEXT_>
+        void
+        flow_implent<_ARG_...>::assemble_act_func_(_FUNC_ &&f, _NEXT_ &&n){
+            using cb=flow_type_compute<_FUNC_,_ARG_...>;
+            using re=typename decltype(cb::compute_this_func_res_type())::type;
+
+            _act_func_=[_func=std::forward<_FUNC_>(f),_next=std::forward<_NEXT_>(n)](_ARG_&&... args){
+                if constexpr (std::is_same_v<void,re>){
+                    _func(std::forward<_ARG_>(args)...);
+                    _next->active();
+                }
+                else if constexpr (bha::equal(
+                        bha::type_c<re>,
+                        bha::type_c<typename remove_flow_implent_shell<re>::_T_>
+                )){
+                    _next->active(_func(std::forward<_ARG_>(args)...));
                 }
                 else{
-                    return [r=std::forward<_R>(_func()),next=this->_next,this]()mutable{
-                        delete(this);
-                        r._flow->_next=next;
-                        r.submit();
-                    };
+                    _func(std::forward<_ARG_>(args)...)
+                            .then([_next](typename remove_flow_implent_shell<re>::_T_&& v){
+                                _next->active(std::forward<typename remove_flow_implent_shell<re>::_T_>(v));
+                            })
+                            .submit();
                 }
-            }
-        }
-    public:
-        explicit flow()= default;
-        explicit flow(utils::noncopyable_function<_R()>&& f)
-                :_func(std::forward<utils::noncopyable_function<_R()>>(f))
-                ,flow_base<void,_R,startor>() {}
-        explicit flow(utils::noncopyable_function<_R()>&& f,const typename next_able<void>::_running_context_type_ & c)
-                :_func(std::forward<utils::noncopyable_function<_R()>>(f))
-                ,flow_base<void,_R,startor>()
-        {
-            this->set_schedule_context(c);
-        }
-        utils::noncopyable_function<_R()> _func;
 
-        PUMP_INLINE void
-        submit() override {
-            if constexpr (!startor)
-                return this->_prev->submit();
-            schedule_to<typename schedule_able<void>::_running_context_type_>::apply(this->_rc_,[this]()mutable{
-                this->active();
-            });
+            };
         }
 
-        PUMP_INLINE void
-        active() override {
-            try{
-                if constexpr (!startor){
-                    if(this->_next)
-                        schedule_to<typename schedule_able<void>::_running_context_type_,typename schedule_able<_R>::_running_context_type_>
-                        ::apply(this->_rc_,this->_next->_rc_,build_active_function());
-                    else
-                        _func();
+        void test12(test_schdule* p){
+            flow_builder<>::at_schdule(p)
+                    .then([p](){
+                        std::cout<<10<<std::endl;
+                        return 10;
+                    })
+                    .then([p](int&& i){
+                        return flow_builder<>::at_schdule(p)
+                                .then([](){
+                                    return 100;
+                                })
+                                .then([p](int&& i){
+                                    return flow_builder<>::at_schdule(p)
+                                            .then([i=std::forward<int>(i)](){
+                                                return i*10;
+                                            });
+                                });
+                    })
+                    .then([](int&& i){
+                        std::cout<<i<<std::endl;
+                        return ++i;
+                    })
+
+                    .then([](int&& i){
+                        std::cout<<i<<std::endl;
+                        return ++i;
+                    })
+                    .to_schdule(new test_schdule())
+                    .then([](int&& i){
+                        std::cout<<i<<std::endl;
+                        return ++i;
+                    })
+                    .then([](int&& i){
+                        std::cout<<i<<std::endl;
+                        return ++i;
+                    })
+                    .submit();
+        }
+
+        void test1(){
+            test_schdule* p=new test_schdule();
+            test12(p);
+
+            while(true){
+                if(!p->l.empty()){
+                    (*p->l.begin())();
+                    p->l.pop_front();
                 }
                 else{
-                    if(this->_next){
-                        if constexpr (boost::hana::equal(
-                                boost::hana::type_c<typename schedule_able<_R>::_running_context_type_>,
-                                boost::hana::type_c<hw::cpu_core>
-                        )){
-                            if(hw::get_thread_cpu_id()==this->_next->_rc_){
-                                build_active_function()();
-                            }
-                            else{
-                                schedule_to<typename schedule_able<_R>::_running_context_type_>
-                                ::apply(
-                                        this->_next->_rc_,
-                                        build_active_function()
-                                );
-                            }
-                        }
-                        else{
-                            build_active_function()();
-                        }
-                    }
-                    else{
-                        _func();
-                    }
+                    sleep(1);
                 }
-            }
-            catch (...){
-                this->handle_exception(std::current_exception());
+
             }
 
         }
-    };
-
-    template <typename _A>
-    class flow_exception_handler:public flow<_A,_A,false>{
-    public:
-        explicit flow_exception_handler(typename flow<_A,_A,false>::exception_handler_res_type&& f)
-        :flow<_A,_A,false>([](_A&& a){ return std::forward<_A>(a);}){
-            this->_exception_func=std::forward<typename flow<_A,_A,false>::exception_handler_res_type&&>(f);
-        }
-    };
-    template <>
-    class flow_exception_handler<void>:public flow<void,void,false>{
-    public:
-        explicit
-        flow_exception_handler(typename flow<void,void,false>::exception_handler_res_type&& f)
-                :flow<void,void,false>([](){ return;}){
-            this->_exception_func=std::forward<typename flow<void,void,false>::exception_handler_res_type&&>(f);
-        }
-    };
-    template <typename _A,bool startor>
-    class cpu_change_flow{};
-
-
-    template <typename _A>
-    class cpu_change_flow<_A,false>: public flow_base<_A,_A,false>{
-    public:
-        explicit
-        cpu_change_flow(hw::cpu_core cpu):flow_base<_A,_A,false>(){
-            this->set_schedule_context(cpu);
-        }
-        void
-        submit()override{
-            this->_prev->submit();
-        }
-        void
-        active(_A&& a)override{
-            if(!this->_next)
-                return;
-            this->_next->set_schedule_context(this->_rc_);
-            if(this->_rc_==hw::get_thread_cpu_id()){
-                this->_next->active(std::forward<_A>(a));
-                delete this;
-            }
-            else{
-                schedule_to<hw::cpu_core>::apply(this->_rc_,[a=std::forward<_A>(a),next=this->_next]()mutable{
-                    if(next)
-                        next->active(std::forward<_A>(a));
-                });
-                delete(this);
-            }
-        }
-    };
-    template <typename _A>
-    class cpu_change_flow<_A,true>: public flow_base<_A,_A,true>{
-        _A _a;
-    public:
-        explicit
-        cpu_change_flow(hw::cpu_core cpu,_A&& a):flow_base<_A,_A,true>(),_a(a){
-            this->set_schedule_context(cpu);
-        }
-        void
-        submit()override{
-            if(!this->_next)
-                return;
-            this->_next->set_schedule_context(this->_rc_);
-            schedule_to<hw::cpu_core>::apply(this->_rc_,[a=std::forward<_A>(_a),next=this->_next]()mutable{
-                if(next)
-                    next->active(std::forward<_A>(a));
-            });
-            delete(this);
-        }
-        void
-        active(_A&& a)override{
-            if(!this->_next)
-                return;
-            this->_next->set_schedule_context(this->_rc_);
-            if(this->_rc_==hw::get_thread_cpu_id()){
-                this->_next->active(std::forward<_A>(a));
-                delete this;
-            }
-            else{
-                schedule_to<hw::cpu_core>::apply(this->_rc_,[a=std::forward<_A>(a),next=this->_next]()mutable{
-                    if(next)
-                        next->active(std::forward<_A>(a));
-                });
-                delete(this);
-            }
-        }
-    };
-    template <>
-    class cpu_change_flow<void,true>:public flow_base<void,void,true>{
-    public:
-        explicit
-        cpu_change_flow(hw::cpu_core cpu):flow_base<void,void,true>(){
-            this->set_schedule_context(cpu);
-        }
-        void
-        submit()override{
-            if(!this->_next)
-                return;
-            this->_next->set_schedule_context(this->_rc_);
-            schedule_to<hw::cpu_core>::apply(this->_rc_,[next=this->_next]()mutable{
-                if(next)
-                    next->active();
-            });
-            delete(this);
-        }
-        void
-        active()override{
-            if(!this->_next)
-                return;
-            this->_next->set_schedule_context(this->_rc_);
-            if(this->_rc_==hw::get_thread_cpu_id()){
-                this->_next->active();
-                delete this;
-            }
-            else{
-                schedule_to<hw::cpu_core>::apply(this->_rc_,[next=this->_next]()mutable{
-                    if(next)
-                        next->active();
-                });
-                delete(this);
-            }
-        }
-    };
-    template <>
-    class cpu_change_flow<void,false>:public flow_base<void,void,false>{
-    public:
-        explicit
-        cpu_change_flow(hw::cpu_core cpu):flow_base<void,void,false>(){
-            this->set_schedule_context(cpu);
-        }
-        void
-        submit()override{
-            this->_prev->submit();
-        }
-        void
-        active()override{
-            if(!this->_next)
-                return;
-            this->_next->set_schedule_context(this->_rc_);
-            if(this->_rc_==hw::get_thread_cpu_id()){
-                this->_next->active();
-                delete this;
-            }
-            else{
-                schedule_to<hw::cpu_core>::apply(this->_rc_,[next=this->_next]()mutable{
-                    if(next)
-                        next->active();
-                });
-                delete(this);
-            }
-        }
-    };
-
-
-    template <typename _V>
-    class
-    flow_builder{
-    private:
-        template <typename _F,typename _R=std::result_of_t<_F(typename _compute_flow_res_type_<_V>::_T_&&)>>
-        flow_builder<typename _compute_flow_res_type_<_R>::_T_>
-        then(_F &&f, const typename next_able<_V>::_running_context_type_ &c){
-            auto res=construct<flow<_V,_R,false>>(std::forward<_F>(f));
-            res->set_schedule_context(c);
-            res->_prev=_flow;
-            _flow->_next=res;
-            return flow_builder<typename _compute_flow_res_type_<_R>::_T_>(res);
-        }
-    public:
-        prev_able<_V>* _flow;
-    public:
-        explicit
-        flow_builder(prev_able<_V>* _f):_flow(_f){}
-        template <typename _F,typename _R=std::result_of_t<_F(typename _compute_flow_res_type_<_V>::_T_&&)>>
-        flow_builder<typename _compute_flow_res_type_<_R>::_T_> then(_F &&f){
-            return then(std::forward<_F>(f), next_able<_V>::_default_running_context_);
-        }
-        void
-        submit(){
-            _flow->submit();
-        }
-        template <typename _F,typename _R=std::result_of_t<_F(std::exception_ptr)>>
-        flow_builder<_V>
-        when_exception(_F &&f){
-            using namespace boost;
-            static_assert(hana::equal(hana::type_c<_R>,hana::type_c<std::optional<_V>>));
-            auto res=construct<flow_exception_handler<_V>>(std::forward<_F>(f));
-            res->set_schedule_context(next_able<_V>::_default_running_context_);
-            res->_prev=_flow;
-            _flow->_next=res;
-            return flow_builder<_V>(res);
-        }
-        flow_builder<_V>
-        at_cpu(hw::cpu_core cpu){
-            cpu_change_flow<_V,false>* res=construct<cpu_change_flow<_V,false>>(cpu);
-            res->_prev=_flow;
-            _flow->_next=res;
-            return flow_builder<_V>(res);
-        }
-
-    };
-    template <>
-    class flow_builder<void>{
-    private:
-        template <typename _F,typename _R=std::result_of_t<_F()>>
-        flow_builder<typename _compute_flow_res_type_<_R>::_T_>
-        then(_F &&f, const typename next_able<void>::_running_context_type_ &c){
-            auto res=construct<flow<void,_R,false>(std::forward<_F>>(f));
-            res->set_schedule_context(c);
-            res->_prev=_flow;
-            _flow->_next=res;
-            return flow_builder<typename _compute_flow_res_type_<_R>::_T_>(res);
-        }
-    public:
-        prev_able<void>* _flow;
-    public:
-        explicit
-        flow_builder(prev_able<void>* _f):_flow(_f){}
-        template <typename _F,typename _R=std::result_of_t<_F()>>
-        flow_builder<typename _compute_flow_res_type_<_R>::_T_> then(_F &&f){
-            return then(std::forward<_F>(f), next_able<void>::_default_running_context_);
-        }
-        void
-        submit(){
-            _flow->submit();
-        }
-        template <typename _F,typename _R=std::result_of_t<_F(std::exception_ptr)>>
-        flow_builder<void>
-        when_exception(_F &&f){
-            auto res=construct<flow_exception_handler<void>>(std::forward<_F>(f));
-            res->set_schedule_context(next_able<void>::_default_running_context_);
-            res->_prev=_flow;
-            _flow->_next=res;
-            return flow_builder<void>(res);
-        }
-        flow_builder<void>
-        at_cpu(hw::cpu_core cpu){
-            cpu_change_flow<void,false>* res=construct<cpu_change_flow<void,false>>(cpu);
-            res->_prev=_flow;
-            _flow->_next=res;
-            return flow_builder<void>(res);
-        }
-    };
-
-
-    template <typename _A>
-    auto
-    at_cpu(hw::cpu_core cpu,_A&& a){
-        return flow_builder(construct<cpu_change_flow<_A,true>>(cpu,std::forward<_A>(a)));
-    }
-    auto
-    at_cpu(hw::cpu_core cpu){
-        return flow_builder(construct<cpu_change_flow<void,true>(cpu)>);
-    }
-    template <typename _A,typename _F>
-    auto
-    at_ctx(_F &&f, typename next_able<_A>::_running_context_type_ &c = next_able<_A>::_default_running_context_){
-        return flow_builder(construct<flow<_A,std::result_of_t<_F(_A&&)>,true>>(std::forward<_F>(f),c));
     }
 }
 #endif //PROJECT_FLOW_HH

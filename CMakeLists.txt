@@ -4,11 +4,12 @@ set(CMAKE_CXX_STANDARD 17)
 set(BOOST_ROOT "/usr/local/include/boost")
 set(PROJECT_ROOT "~/work/pump")
 
-add_compile_options("-O3")
+
 add_compile_options("-fnon-call-exceptions")
 
 include_directories(${BOOST_ROOT}/include)
-include_directories(${PROJECT_ROOT}/src)
+include_directories(${PROJECT_ROOT}/src/framework)
+include_directories(${PROJECT_ROOT}/src/3rd)
 
 add_subdirectory(src/app/mqtt)
 add_subdirectory(src/app/echo)

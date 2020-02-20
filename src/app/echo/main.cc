@@ -68,7 +68,7 @@ thread_local data::cache_lsu<int,std::string> cache_on_thread;
 
 uint64_t t=0;
 
-PUMP_INLINE void
+ALWAYS_INLINE void
 test(int cpu,int count){
     reactor::at_cpu(hw::cpu_core(cpu))
             .then([](){
@@ -141,8 +141,8 @@ int main(int argc, char * argv[]){
     //hw::the_cpu_count=1;
     engine::init_engine
             <
-                    reactor::sortable_task<utils::noncopyable_function<void()>,1>,
-                    reactor::sortable_task<utils::noncopyable_function<void()>,2>
+                    reactor::sortable_task<common::noncopyable_function<void()>,1>,
+                    reactor::sortable_task<common::noncopyable_function<void()>,2>
             >();
     sleep(1);
 
