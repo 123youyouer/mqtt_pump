@@ -518,19 +518,19 @@ namespace moodycamel {
 	class ThreadExitNotifier
 	{
 	public:
-		static void subscribe(ThreadExitListener* listener)
+		static void subscribe(ThreadExitListener* tcp_listener)
 		{
 			auto& tlsInst = instance();
-			listener->next = tlsInst.tail;
-			tlsInst.tail = listener;
+			tcp_listener->next = tlsInst.tail;
+			tlsInst.tail = tcp_listener;
 		}
 
-		static void unsubscribe(ThreadExitListener* listener)
+		static void unsubscribe(ThreadExitListener* tcp_listener)
 		{
 			auto& tlsInst = instance();
 			ThreadExitListener** prev = &tlsInst.tail;
 			for (auto ptr = tlsInst.tail; ptr != nullptr; ptr = ptr->next) {
-				if (ptr == listener) {
+				if (ptr == tcp_listener) {
 					*prev = ptr->next;
 					break;
 				}
@@ -3458,7 +3458,7 @@ private:
 		debug::DebugLock lock(implicitProdMutex);
 #endif
 		auto hash = implicitProducerHash.load(std::memory_order_acquire);
-		assert(hash != nullptr);		// The thread exit listener is only registered if we were added to a hash in the first place
+		assert(hash != nullptr);		// The thread exit tcp_listener is only registered if we were added to a hash in the first place
 		auto id = details::thread_id();
 		auto hashedId = details::hash_thread_id(id);
 		details::thread_id_t probedKey;

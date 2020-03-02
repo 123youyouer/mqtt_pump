@@ -6,7 +6,7 @@
 #define PROJECT_SCHEDULE_HH
 
 #include <boost/noncopyable.hpp>
-#include <common/noncopyable_function.hh>
+#include <common/ncpy_func.hh>
 #include <moodycamel/concurrentqueue.h>
 
 namespace reactor{

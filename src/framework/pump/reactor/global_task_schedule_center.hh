@@ -57,7 +57,7 @@ namespace reactor{
 
         ALWAYS_INLINE
         constexpr
-        static inline auto run(unsigned int cpu_id){
+        static auto run(unsigned int cpu_id){
             for(int src_id=0;src_id<hw::the_cpu_count;++src_id)
                 global_task_schedule_center<_TASK_TYPE_0>[src_id][cpu_id]->pop_and_run();
         }

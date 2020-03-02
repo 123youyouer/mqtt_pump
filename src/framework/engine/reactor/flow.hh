@@ -9,10 +9,14 @@
 #include <memory>
 #include <variant>
 #include <list>
-#include <boost/noncopyable.hpp>
-#include <common/noncopyable_function.hh>
-#include <common/apply.hh>
+#include <any>
 #include <boost/hana.hpp>
+#include <boost/noncopyable.hpp>
+#include <common/ncpy_func.hh>
+#include <common/apply.hh>
+#include <common/g_define.hh>
+#include <engine/reactor/schdule.hh>
+
 namespace engine{
     namespace reactor{
 
@@ -56,18 +60,19 @@ namespace engine{
                 if constexpr (bha::equal(
                         bha::type_c<bha::tuple<_ARG_...>>,
                         bha::type_c<bha::tuple<void>>)){
-                    return bha::type_c<std::variant<std::monostate,std::exception_ptr>>;
+                    return bha::type_c<FLOW_ARG()>;
                 }
                 else if constexpr (sizeof...(_ARG_)==0){
-                    return bha::type_c<std::variant<std::monostate,std::exception_ptr>>;
+                    return bha::type_c<FLOW_ARG()>;
                 }
                 else if constexpr (sizeof...(_ARG_)==1){
-                    return bha::type_c<std::variant<std::monostate,std::exception_ptr,_ARG_...>>;
+                    return bha::type_c<FLOW_ARG(_ARG_...)>;
                 }
                 else{
-                    return bha::type_c<std::variant<std::monostate,std::exception_ptr,std::tuple<_ARG_...>>>;
+                    return bha::type_c<FLOW_ARG(std::tuple<_ARG_...>)>;
                 }
             }
+
             template <typename _FUNC_>
             static constexpr auto
             compute_this_func_res_type(){
@@ -78,8 +83,9 @@ namespace engine{
             template <typename _FUNC_>
             static constexpr auto
             compute_next_flow_implent_type(){
-                using res_type=typename remove_flow_implent_shell<typename decltype(compute_this_func_res_type<_FUNC_>())::type>::_T_ ;
-                if constexpr (std::is_same<void,res_type>::value){
+                using arg_type=typename decltype(compute_this_func_res_type<_FUNC_>())::type;
+                using res_type=typename remove_flow_implent_shell<arg_type>::_T_ ;
+                if constexpr (std::is_same_v<void,res_type>){
                     return bha::type_c<flow_implent<>>;
                 }
                 else{
@@ -89,87 +95,138 @@ namespace engine{
             template <typename _FUNC_>
             static constexpr auto
             compute_next_flow_builder_type(){
-                using res_type=typename remove_flow_implent_shell<typename decltype(compute_this_func_res_type<_FUNC_>())::type>::_T_ ;
-                if constexpr (std::is_same<void,res_type>::value){
+                using arg_type=typename decltype(compute_this_func_res_type<_FUNC_>())::type;
+                using res_type=typename remove_flow_implent_shell<arg_type>::_T_ ;
+                if constexpr (std::is_same_v<void,res_type>){
+
                     return bha::type_c<flow_builder<>>;
                 }
                 else{
+
                     return bha::type_c<flow_builder<res_type>>;
                 }
             }
         };
 
         template <typename ..._ARG_>
-        class flow_builder;
-
-        template <typename ..._ARG_>
         class flow_implent:boost::noncopyable{
+        public:
             using _arg_list_type_=typename decltype(flow_type_compute<_ARG_...>::compute_arg_type())::type;
-            using _act_func_type_=common::noncopyable_function<void(_arg_list_type_&&)>;
-            using _sch_func_type_=common::noncopyable_function<void(_act_func_type_&&,_arg_list_type_&&)>;
+            using _act_func_type_=common::ncpy_func<void(_arg_list_type_&)>;
         protected:
-            _act_func_type_ _act_func_;
-            _sch_func_type_ _sch_func_;
+            struct _inner_{
+                bool called;
+                _act_func_type_ _act_func_;
+                std::shared_ptr<flow_runner> _runner;
+                _arg_list_type_ _value_;
+                _inner_():called(false){}
+            };
+            std::shared_ptr<_inner_> inner_data;
         public:
             template <typename _FUNC_, typename _NEXT_>
             void
-            assemble_act_func_(_FUNC_ &&f, _NEXT_ &&n);
-            template <typename _SCHD_>
+            assemble_act_func_(_FUNC_ &&f, std::shared_ptr<_NEXT_> n);
             void
-            assemble_sch_func_(_SCHD_* s){
-                _sch_func_=[s](_act_func_type_&& _f,_arg_list_type_&& _a)mutable{
-                    (*s)([_f=std::forward<_act_func_type_>(_f),_a=std::forward<_arg_list_type_>(_a)]()mutable{
-                        _f(std::forward<_arg_list_type_>(_a));
-                    });
-                };
+            assemble_sch_func_(std::shared_ptr<flow_runner>& r){
+                inner_data->_runner=r;
             }
-
-            flow_implent()= default;
-        public:
-            void
-            active(_arg_list_type_&& a){
-                if(_act_func_)
-                    _sch_func_(std::forward<_act_func_type_>(_act_func_),std::forward<_arg_list_type_>(a));
+            flow_implent():inner_data(new _inner_()){};
+            flow_implent(flow_implent&& f)noexcept{
+                inner_data=f.inner_data;
+                //std::swap(inner_data,f.inner_data);
             }
-            friend class flow_builder<_ARG_...>;
-        };
-
-        template <typename ..._IN_>
-        class schdule_center{
+        private:
+            ALWAYS_INLINE void
+            active_impl(){
+                inner_data->_runner->schedule([flow=std::forward<flow_implent<_ARG_...>>(*this)](std::exception_ptr e)mutable{
+                    if(e){
+                        auto v=_arg_list_type_(e);
+                        flow.inner_data->_act_func_(v);
+                    }
+                    else{
+                        flow.inner_data->_act_func_(flow.inner_data->_value_);
+                    }
+                });
+            }
         public:
-            virtual void operator()(common::noncopyable_function<void(_IN_&& ..._in)>&& f)=0;
-        };
-
-        class test_schdule final:public schdule_center<>{
-        public:
-            std::list<common::noncopyable_function<void()>> l;
-            void operator()(common::noncopyable_function<void()>&& f)final{
-                l.push_back(std::forward<common::noncopyable_function<void()>>(f));
+            ALWAYS_INLINE bool
+            called(){ return inner_data->called;}
+            template <typename _A_>
+            ALWAYS_INLINE void
+            active(_A_&& arg){
+                if(inner_data->called)
+                    return;
+                inner_data->called= true;
+                if(!inner_data->_act_func_)
+                    return;
+                inner_data->_value_.template emplace<_A_>(std::forward<_A_>(arg));
+                active_impl();
+            }
+            ALWAYS_INLINE void
+            active(){
+                if(inner_data->called)
+                    return;
+                inner_data->called= true;
+                if(!inner_data->_act_func_)
+                    return;
+                inner_data->_value_.template emplace<std::monostate>(std::monostate());
+                active_impl();
+            }
+            ALWAYS_INLINE void
+            active(std::exception_ptr _e){
+                if(inner_data->called)
+                    return;
+                inner_data->called= true;
+                if(!inner_data->_act_func_)
+                    return;
+                inner_data->_value_.template emplace<std::exception_ptr>(std::forward<std::exception_ptr>(_e));
+                active_impl();
+            }
+            ALWAYS_INLINE void
+            trigge(_arg_list_type_&& arg){
+                if(inner_data->called)
+                    return;
+                inner_data->called= true;
+                if(!inner_data->_act_func_)
+                    return;
+                inner_data->_value_.swap(arg);
+                active_impl();
+            }
+            ALWAYS_INLINE void
+            trigge(std::exception_ptr _e){
+                if(inner_data->called)
+                    return;
+                inner_data->called= true;
+                if(!inner_data->_act_func_)
+                    return;
+                inner_data->_value_.template emplace<std::exception_ptr>(std::forward<std::exception_ptr>(_e));
+                active_impl();
             }
         };
-
 
         template <typename ..._ARG_>
         class flow_builder:boost::noncopyable{
+            using _sub_func_t_=common::ncpy_func<void()>;
+            using _imp_flow_t_=std::shared_ptr<flow_implent<_ARG_...>>;
         public:
             struct flow_builder_data{
-                common::noncopyable_function<void()> _begin_func_;
-                std::shared_ptr<flow_implent<_ARG_...>> _this_impl_;
-                schdule_center<>* _psch;
+                std::shared_ptr<flow_runner> _runner_;
+                _sub_func_t_ _sub_func_;
+                _imp_flow_t_ _imp_flow_;
+
                 explicit
                 flow_builder_data(
-                        common::noncopyable_function<void()>&& _bf,
-                        schdule_center<>* sch,
-                        std::shared_ptr<flow_implent<_ARG_...>>& imp
-                        ){
-                    _begin_func_=std::forward<common::noncopyable_function<void()>>(_bf);
-                    _psch=sch;
-                    _this_impl_=imp;
+                        std::shared_ptr<flow_runner>& _run,
+                        _sub_func_t_&& _sub,
+                        _imp_flow_t_& _imp
+                )
+                        :_runner_(_run)
+                        ,_sub_func_(std::forward<_sub_func_t_>(_sub))
+                        ,_imp_flow_(std::forward<_imp_flow_t_>(_imp)){
                 }
                 explicit
-                flow_builder_data()= default;
+                flow_builder_data()= delete;
             };
-
             std::shared_ptr<flow_builder_data> _data;
         public:
             flow_builder(flow_builder&& o)noexcept{
@@ -180,273 +237,138 @@ namespace engine{
             }
             explicit
             flow_builder(
-                    common::noncopyable_function<void()>&& _bf,
-                    schdule_center<>* sch,
-                    std::shared_ptr<flow_implent<_ARG_...>>& imp){
-                _data=std::shared_ptr<flow_builder_data>(new flow_builder_data(std::forward<common::noncopyable_function<void()>>(_bf),sch,imp));
-            }
-
-            explicit
-            flow_builder(
-                    schdule_center<>* sch,
-                    std::shared_ptr<flow_implent<_ARG_...>>& imp)
-                    :_data(new flow_builder_data()){
-                _data->_psch=sch;
-                _data->_this_impl_=imp;
-            }
-            explicit
-            flow_builder(
-                    schdule_center<>* sch,
-                    std::shared_ptr<flow_implent<_ARG_...>>&& imp)
-                    :_data(new flow_builder_data()){
-                _data->_psch=sch;
-                _data->_this_impl_=imp;
+                    std::shared_ptr<flow_runner>& _run,
+                    _sub_func_t_&& _sub,
+                    _imp_flow_t_& _imp){
+                _data=std::make_shared<flow_builder_data>(
+                        _run,
+                        std::forward<_sub_func_t_>(_sub),
+                        (_imp)
+                );
             }
             template <typename _FUNC_>
-            auto
+            typename decltype(flow_type_compute<_ARG_...>::template compute_next_flow_builder_type<_FUNC_>())::type
             then(_FUNC_&& f){
                 using cp=flow_type_compute<_ARG_...>;
                 using fi=typename decltype(cp::template compute_next_flow_implent_type<_FUNC_>())::type;
                 using fb=typename decltype(cp::template compute_next_flow_builder_type<_FUNC_>())::type;
 
-                auto _next=std::make_shared<fi>();
-                _data->_this_impl_->assemble_act_func_(
-                        std::forward<_FUNC_>(f),
-                        _next);
-                _data->_this_impl_->assemble_sch_func_(_data->_psch);
-                return fb(std::forward<common::noncopyable_function<void()>>(this->_data->_begin_func_),_data->_psch,_next);
+                auto _next_flow=std::make_shared<fi>();
+
+                _data->_imp_flow_->assemble_act_func_(std::forward<_FUNC_>(f),_next_flow);
+                _data->_imp_flow_->assemble_sch_func_(_data->_runner_);
+
+                return fb(
+                        _data->_runner_,
+                        std::forward<_sub_func_t_>(_data->_sub_func_),
+                        _next_flow
+                );
             }
 
             void submit(){
-                _data->_begin_func_();
+                _data->_sub_func_();
             }
-            template<typename ..._IN_>
-            auto
-            to_schdule(schdule_center<_IN_...>* sch){
-                this->_data->_psch=sch;
+            flow_builder<_ARG_...>
+            to_schedule(std::shared_ptr<flow_runner>& r){
+                _data->_runner_=r;
                 return std::forward<flow_builder<_ARG_...>>(*this);
             }
-
-            template<typename ..._IN_>
+            template <typename _SUBMIT_AT_>
             static auto
-            at_schdule(schdule_center<_IN_...>* sch){
-                auto x=flow_builder(sch,std::shared_ptr<flow_implent<_ARG_...>>(new flow_implent<_ARG_...>()));
-                x._data->_begin_func_=[sch,data=x._data]()mutable{
-                    (*sch)([data](_IN_&& ...in){
-                        if constexpr (bha::equal(
-                                bha::type_c<std::tuple<_IN_...>>,
-                                bha::type_c<std::tuple<void>>
-                                )){
-                            data->_this_impl_->active(std::variant<std::monostate,std::exception_ptr>());
-                        }
-                        else if constexpr (bha::equal(
-                                bha::type_c<std::tuple<_IN_...>>,
-                                bha::type_c<std::tuple<>>
-                        )){
-
-                            data->_this_impl_->active(std::variant<std::monostate,std::exception_ptr>());
-                        }
-                        else{
-                            data->_this_impl_->active(
-                                    std::variant<std::monostate,std::exception_ptr,std::tuple<_IN_...>>(
-                                            std::make_tuple(std::forward<_IN_>(in)...)
-                                    )
-                            );
-                        }
-
-                    });
-                };
-                return x;
+            at_schedule(_SUBMIT_AT_&& _submit_at_,std::shared_ptr<flow_runner>& _schedule_at_){
+                auto _impl=std::make_shared<flow_implent<_ARG_...>>();
+                return flow_builder<_ARG_...>
+                        (
+                                _schedule_at_,
+                                [_submit_at_=std::forward<_SUBMIT_AT_>(_submit_at_),_impl]()mutable{
+                                    _submit_at_(_impl);
+                                },
+                                (_impl)
+                        );
             }
+            /*
+            template <typename _SUBMIT_AT_>
+            static auto
+            at_schedule(_SUBMIT_AT_&& _submit_at_,std::shared_ptr<flow_runner>& _schedule_at_){
+                auto _impl=std::make_shared<flow_implent<_ARG_...>>();
+                return flow_builder<_ARG_...>
+                        (
+                                _schedule_at_,
+                                [_submit_at_=std::forward<_SUBMIT_AT_>(_submit_at_),_impl]()mutable{
+                                    _submit_at_([_impl](FLOW_ARG(_ARG_...)&& a){
+                                        _impl->trigge(std::forward<FLOW_ARG(_ARG_...)>(a));
+                                    });
+                                },
+                                (_impl)
+                        );
+            };
+            */
+            static constexpr auto
+            at_schedule(std::shared_ptr<flow_runner>& _schedule_at_){
+                return at_schedule
+                        (
+                                [_sch=_schedule_at_](std::shared_ptr<flow_implent<_ARG_...>> f)mutable{
+                                    _sch->schedule([f](FLOW_ARG(_ARG_...)&& a){
+                                        f->trigge(std::forward<FLOW_ARG(_ARG_...)>(a));
+                                    });
+                                },
+                                _schedule_at_
+                        );
+            };
         };
+
 
         template <typename ..._ARG_>
         template <typename _FUNC_, typename _NEXT_>
         void
-        flow_implent<_ARG_...>::assemble_act_func_(_FUNC_ &&f, _NEXT_ &&n){
+        flow_implent<_ARG_...>::assemble_act_func_(_FUNC_ &&f, std::shared_ptr<_NEXT_> n){
             using cb=flow_type_compute<_ARG_...>;
             using re=typename decltype(cb::template compute_this_func_res_type<_FUNC_>())::type;
-
-            _act_func_=[_func=std::forward<_FUNC_>(f),_next=std::forward<_NEXT_>(n)](_arg_list_type_&& args){
+            inner_data->_act_func_=[_func=std::forward<_FUNC_>(f),_next=n](_arg_list_type_& args)mutable{
                 if constexpr (std::is_same_v<void,re>){
-                    std::variant<std::monostate,std::exception_ptr> res;
                     try{
                         _func(std::forward<_arg_list_type_>(args));
-                        res.template emplace<std::monostate>();
+                        _next->active();
                     }
                     catch(...){
-                        res.template emplace<std::exception_ptr>(std::current_exception());
+                        _next->active(std::current_exception());
                     }
-                    _next->active(std::forward<std::variant<std::monostate,std::exception_ptr>>(res));
+
                 }
                 else if constexpr (bha::equal(
                         bha::type_c<re>,
                         bha::type_c<typename remove_flow_implent_shell<re>::_T_>
                 )){
-                    std::variant<std::monostate,std::exception_ptr,std::tuple<re>> res;
                     try{
-                        if constexpr (std::is_same_v<std::tuple<_ARG_...>,std::tuple<>>){
-                            res.template emplace<std::tuple<re>>(std::make_tuple(_func(std::variant<std::monostate,std::exception_ptr>())));
-                        }
-                        else{
-                            res.template emplace<std::tuple<re>>(std::make_tuple(_func(std::forward<_arg_list_type_>(args))));
-                        }
-
+                        _next->active(_func(std::forward<_arg_list_type_>(args)));
                     }
                     catch (...){
-                        res.template emplace<std::exception_ptr>(std::current_exception());
+                        _next->active(std::current_exception());
                     }
-                    _next->active(std::forward<std::variant<std::monostate,std::exception_ptr,std::tuple<re>>>(res));
                 }
                 else{
-                    std::variant<std::monostate,std::exception_ptr,std::tuple<typename remove_flow_implent_shell<re>::_T_>> res;
                     try{
                         _func(std::forward<_arg_list_type_>(args))
-                                .then([_next](std::variant<std::monostate,std::exception_ptr,std::tuple<typename remove_flow_implent_shell<re>::_T_>>&& v){
-                                    _next->active(
-                                            std::forward<
-                                                    std::variant<std::monostate,std::exception_ptr,std::tuple<typename remove_flow_implent_shell<re>::_T_>>
-                                            >(v));
+                                .then([_next](FLOW_ARG(typename remove_flow_implent_shell<re>::_T_)&& v){
+                                    _next->trigge(std::forward<FLOW_ARG(typename remove_flow_implent_shell<re>::_T_)>(v));
                                 })
                                 .submit();
                     }
                     catch(...){
-                        _next->active(std::forward<
-                                std::variant<
-                                        std::monostate,std::exception_ptr,std::tuple<
-                                                typename remove_flow_implent_shell<re>::_T_
-                                        >
-                                >
-                        >(res));
+                        _next->active(std::current_exception());
                     }
-
                 }
 
             };
         }
 
-        void test12(test_schdule* p){
-            flow_builder<>::at_schdule(p)
-                    .then([p](std::variant<std::monostate,std::exception_ptr>&& v){
-                        std::cout<<10<<std::endl;
-                        throw std::logic_error("yeeee");
-                        return 10;
-                    })
-                    .then([p](std::variant<std::monostate,std::exception_ptr,std::tuple<int>>&& v){
-                        switch (v.index()){
-                            case 0:
-                                return 98;
-                            case 1:
-                                try {
-                                    std::rethrow_exception(std::get<1>(v));
-                                }
-                                catch (const std::exception& e){
-                                    std::cout<<e.what()<<std::endl;
-                                }
-                                catch (...){
-                                    std::cout<<"aaa"<<std::endl;
-                                }
-                                return 99;
-                            case 2:
-                                std::cout<<"lll"<<std::endl;
-                                return std::get<0>(std::get<2>(v))+1;
-                        }
-                    })
-                    .then([p](std::variant<std::monostate,std::exception_ptr,std::tuple<int>>&& v){
-                        return flow_builder<>::at_schdule(p)
-                                .then([p](std::variant<std::monostate,std::exception_ptr>&& v){
-                                    std::cout<<10<<std::endl;
-                                    return 10;
-                                })
-                                .then([p](std::variant<std::monostate,std::exception_ptr,std::tuple<int>>&& v){
-                                    switch (v.index()){
-                                        case 0:
-                                            return 98;
-                                        case 1:
-                                            try {
-                                                std::rethrow_exception(std::get<1>(v));
-                                            }
-                                            catch (const std::exception& e){
-                                                std::cout<<e.what()<<std::endl;
-                                            }
-                                            catch (...){
-                                                std::cout<<"aaa"<<std::endl;
-                                            }
-                                            return 99;
-                                        case 2:
-                                            std::cout<<"lll"<<std::endl;
-                                            return std::get<0>(std::get<2>(v))+1;
-                                    }
-                                });
-                    })
-                    .then([p](std::variant<std::monostate,std::exception_ptr,std::tuple<int>>&& v){
-                        switch (v.index()){
-                            case 0:
-                                return 98;
-                            case 1:
-                                try {
-                                    std::rethrow_exception(std::get<1>(v));
-                                }
-                                catch (const std::exception& e){
-                                    std::cout<<e.what()<<std::endl;
-                                }
-                                catch (...){
-                                    std::cout<<"aaa"<<std::endl;
-                                }
-                                return 99;
-                            case 2:
-                                std::cout<<"98989"<<std::endl;
-                                return std::get<0>(std::get<2>(v))+1;
-                        }
-                    })
-
-                    /*
-                    .then([p](int&& i){
-                        return flow_builder<>::at_schdule(p)
-                                .then([](){
-                                    return 100;
-                                })
-                                .then([p](int&& i){
-                                    return flow_builder<>::at_schdule(p)
-                                            .then([i=std::forward<int>(i)](){
-                                                return i*10;
-                                            });
-                                });
-                    })
-                    .then([](int&& i){
-                        std::cout<<i<<std::endl;
-                        return ++i;
-                    })
-
-                    .then([](int&& i){
-                        std::cout<<i<<std::endl;
-                        return ++i;
-                    })
-                    .to_schdule(new test_schdule())
-                    .then([](int&& i){
-                        std::cout<<i<<std::endl;
-                        return ++i;
-                    })
-                     */
-
-                    .submit();
+        flow_builder<>
+        make_task_flow(){
+            return flow_builder<>::at_schedule(_sp_global_task_center_);
         }
-
-        void test1(){
-            test_schdule* p=new test_schdule();
-            test12(p);
-
-            while(true){
-                if(!p->l.empty()){
-                    (*p->l.begin())();
-                    p->l.pop_front();
-                }
-                else{
-                    sleep(1);
-                }
-
-            }
-
+        flow_builder<>
+        make_imme_flow(){
+            return flow_builder<>::at_schedule(_sp_immediate_runner_);
         }
     }
 }

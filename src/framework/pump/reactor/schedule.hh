@@ -6,7 +6,7 @@
 #define PROJECT_SCHEDULE_HH
 
 #include <pump/hw/cpu.hh>
-#include <common/noncopyable_function.hh>
+#include <common/ncpy_func.hh>
 #include <boost/hana.hpp>
 //#include <pump/reactor/task_channel.hh>
 #include <pump/reactor/global_task_schedule_center.hh>
@@ -37,8 +37,8 @@ namespace reactor{
 
     template <>
     struct schedule_to<hw::cpu_core,hw::cpu_core>{
-        static void apply(const hw::cpu_core& _src,const hw::cpu_core& _dst,common::noncopyable_function<void()>&& f){
-            using task_type=common::noncopyable_function<void()>;
+        static void apply(const hw::cpu_core& _src,const hw::cpu_core& _dst,common::ncpy_func<void()>&& f){
+            using task_type=common::ncpy_func<void()>;
 
             hw::cpu_core src=_src;
             if(src==hw::cpu_core::_ANY)
@@ -48,7 +48,7 @@ namespace reactor{
                 dst=src;
 
             reactor::global_task_schedule_center<reactor::sortable_task<task_type,1>>[static_cast<int>(src)][static_cast<int>(dst)]
-                    ->push(reactor::sortable_task<task_type,1>(std::forward<common::noncopyable_function<void()>>(f)));
+                    ->push(reactor::sortable_task<task_type,1>(std::forward<common::ncpy_func<void()>>(f)));
 
             eventfd_write(poller::_all_task_runner_fd[static_cast<int>(dst)],1);
         }
@@ -56,15 +56,15 @@ namespace reactor{
 
     template <>
     struct schedule_to<hw::cpu_core>{
-        static void apply(const hw::cpu_core& dst,common::noncopyable_function<void()>&& f){
-            schedule_to<hw::cpu_core,hw::cpu_core>::apply(hw::get_thread_cpu_id(),dst,std::forward<common::noncopyable_function<void()>>(f));
+        static void apply(const hw::cpu_core& dst,common::ncpy_func<void()>&& f){
+            schedule_to<hw::cpu_core,hw::cpu_core>::apply(hw::get_thread_cpu_id(),dst,std::forward<common::ncpy_func<void()>>(f));
         }
     };
 
     template <typename _T0>
     struct schedule_to<_T0,hw::cpu_core>{
-        static void apply(const _T0& src,const hw::cpu_core& dst,common::noncopyable_function<void()>&& f){
-            schedule_to<hw::cpu_core,hw::cpu_core>::apply(hw::get_thread_cpu_id(),dst,std::forward<common::noncopyable_function<void()>>(f));
+        static void apply(const _T0& src,const hw::cpu_core& dst,common::ncpy_func<void()>&& f){
+            schedule_to<hw::cpu_core,hw::cpu_core>::apply(hw::get_thread_cpu_id(),dst,std::forward<common::ncpy_func<void()>>(f));
         }
     };
 }

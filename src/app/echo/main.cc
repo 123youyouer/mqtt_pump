@@ -116,8 +116,23 @@ test(int cpu,int count){
             })
             .submit();
 }
-
+class nocopy:boost::noncopyable{
+public:
+    int b;
+    nocopy(int _b):b(_b){
+        std::cout<<"nocopy()"<<std::endl;
+    }
+    ~nocopy(){
+        std::cout<<"~nocopy()"<<std::endl;
+    }
+    nocopy(nocopy&& n){
+        std::cout<<"nocopy(n)"<<std::endl;
+    }
+};
 int main(int argc, char * argv[]){
+
+
+
     boost::program_options::options_description ops;
 
     std::string config;
@@ -141,11 +156,24 @@ int main(int argc, char * argv[]){
     //hw::the_cpu_count=1;
     engine::init_engine
             <
-                    reactor::sortable_task<common::noncopyable_function<void()>,1>,
-                    reactor::sortable_task<common::noncopyable_function<void()>,2>
+                    reactor::sortable_task<common::ncpy_func<void()>,1>,
+                    reactor::sortable_task<common::ncpy_func<void()>,2>
             >();
     sleep(1);
 
+
+    reactor::at_cpu(hw::cpu_core::_01)
+            .then([](){
+                return nocopy(10);
+            })
+            .then([](nocopy&& n){
+                return std::forward<nocopy>(n);
+            })
+            .then([](nocopy&& n){
+                return std::forward<nocopy>(n);
+            })
+            .submit();
+    sleep(10000);
 
     t=timer::now_tick();
     std::cout<<t<<std::endl;
@@ -176,7 +204,7 @@ int main(int argc, char * argv[]){
             .submit();
 
     logger::info("echo server started ......");
-    run_echo(net::listener<9022>::instance.start_at(hw::cpu_core::_01));
+    run_echo(net::tcp_listener<9022>::instance.start_at(hw::cpu_core::_01));
     logger::info("echo server listen at {}",9022);
      */
     sleep(10000);

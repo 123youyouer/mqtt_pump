@@ -7,7 +7,7 @@
 
 #include <boost/hana.hpp>
 #include <boost/noncopyable.hpp>
-#include <common/noncopyable_function.hh>
+#include <common/ncpy_func.hh>
 #include <moodycamel/concurrentqueue.h>
 #include <moodycamel/readerwriterqueue.h>
 
@@ -17,7 +17,7 @@ namespace reactor{
     template <typename _T>
     struct task_schedule_center : boost::noncopyable{
     public:
-        using task_type=common::noncopyable_function<void(_T&&)>;
+        using task_type=common::ncpy_func<void(_T&&)>;
     public:
         moodycamel::ConcurrentQueue<task_type> _q;
         void push(task_type&& e){

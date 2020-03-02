@@ -1,12 +1,12 @@
 cmake_minimum_required(VERSION 3.12)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(BOOST_ROOT "/usr/local/include/boost")
 set(PROJECT_ROOT "~/work/pump")
-
+set(CMAKE_VERBOSE_MAKEFILE on)
 
 add_compile_options("-fnon-call-exceptions")
-
+#add_compile_options("-march=x86-64")
 include_directories(${BOOST_ROOT}/include)
 include_directories(${PROJECT_ROOT}/src/framework)
 include_directories(${PROJECT_ROOT}/src/3rd)

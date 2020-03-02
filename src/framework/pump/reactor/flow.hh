@@ -6,7 +6,7 @@
 #define PROJECT_FLOW_HH
 #include <boost/hana.hpp>
 #include <pump/hw/cpu.hh>
-#include <common/noncopyable_function.hh>
+#include <common/ncpy_func.hh>
 #include <pump/reactor/schedule.hh>
 #include <pump/reactor/flow_state.hh>
 #include <pump/reactor/flow_pool.hh>
@@ -82,9 +82,9 @@ namespace reactor{
                     ,public next_able<typename _compute_flow_res_type_<_A>::_T_>
                     ,public boost::noncopyable{
     protected:
-        common::noncopyable_function<std::optional<_R>(std::exception_ptr)> _exception_func;
+        common::ncpy_func<std::optional<_R>(std::exception_ptr)> _exception_func;
     public:
-        using exception_handler_res_type=common::noncopyable_function<std::optional<_R>(std::exception_ptr)>;
+        using exception_handler_res_type=common::ncpy_func<std::optional<_R>(std::exception_ptr)>;
         flow_base()= default;
         void
         reinit(){
@@ -141,9 +141,9 @@ namespace reactor{
                     ,public next_able<typename _compute_flow_res_type_<_A>::_T_>
                     ,public boost::noncopyable{
     protected:
-        common::noncopyable_function<bool(std::exception_ptr)> _exception_func;
+        common::ncpy_func<bool(std::exception_ptr)> _exception_func;
     public:
-        using exception_handler_res_type=common::noncopyable_function<bool(std::exception_ptr)>;
+        using exception_handler_res_type=common::ncpy_func<bool(std::exception_ptr)>;
         flow_base()= default;
         void
         reinit(){
@@ -221,32 +221,32 @@ namespace reactor{
         explicit
         flow()= delete;
         explicit
-        flow(common::noncopyable_function<_R(_A&&)>&& f)
-                :_func(std::forward<common::noncopyable_function<_R(_A&&)>>(f))
+        flow(common::ncpy_func<_R(_A&&)>&& f)
+                :_func(std::forward<common::ncpy_func<_R(_A&&)>>(f))
                 ,flow_base<_A,_R,startor>()
         {}
         explicit
-        flow(common::noncopyable_function<_R(_A&&)>&& f,typename next_able<_A>::_running_context_type_& c)
-                :_func(std::forward<common::noncopyable_function<_R(_A&&)>>(f))
+        flow(common::ncpy_func<_R(_A&&)>&& f,typename next_able<_A>::_running_context_type_& c)
+                :_func(std::forward<common::ncpy_func<_R(_A&&)>>(f))
                 ,flow_base<_A,_R,startor>()
         {
             this->set_schedule_context(c);
         }
         auto
-        reinit(common::noncopyable_function<_R(_A&&)>&& f){
+        reinit(common::ncpy_func<_R(_A&&)>&& f){
             flow_base<_A,_R,startor>::reinit();
-            this->_func=std::forward<common::noncopyable_function<_R(_A&&)>>(f);
+            this->_func=std::forward<common::ncpy_func<_R(_A&&)>>(f);
             return this;
         }
         auto
-        reinit(common::noncopyable_function<_R(_A&&)>&& f,typename next_able<_A>::_running_context_type_& c){
+        reinit(common::ncpy_func<_R(_A&&)>&& f,typename next_able<_A>::_running_context_type_& c){
             flow_base<_A,_R,startor>::reinit();
-            this->_func=std::forward<common::noncopyable_function<_R(_A&&)>>(f);
+            this->_func=std::forward<common::ncpy_func<_R(_A&&)>>(f);
             this->set_schedule_context(c);
             return this;
         }
 
-        common::noncopyable_function<_R(_A&&)> _func;
+        common::ncpy_func<_R(_A&&)> _func;
 
         ALWAYS_INLINE void
         submit()override{
@@ -344,30 +344,30 @@ namespace reactor{
         }
     public:
         explicit flow()= delete;
-        explicit flow(common::noncopyable_function<_R()>&& f)
-                :_func(std::forward<common::noncopyable_function<_R()>>(f))
+        explicit flow(common::ncpy_func<_R()>&& f)
+                :_func(std::forward<common::ncpy_func<_R()>>(f))
                 ,flow_base<void,_R,startor>() {}
-        explicit flow(common::noncopyable_function<_R()>&& f,const typename next_able<void>::_running_context_type_ & c)
-                :_func(std::forward<common::noncopyable_function<_R()>>(f))
+        explicit flow(common::ncpy_func<_R()>&& f,const typename next_able<void>::_running_context_type_ & c)
+                :_func(std::forward<common::ncpy_func<_R()>>(f))
                 ,flow_base<void,_R,startor>()
         {
             this->set_schedule_context(c);
         }
         auto
-        reinit(common::noncopyable_function<_R()>&& f){
+        reinit(common::ncpy_func<_R()>&& f){
             flow_base<void,_R,startor>::reinit();
-            this->_func=std::forward<common::noncopyable_function<_R()>>(f);
+            this->_func=std::forward<common::ncpy_func<_R()>>(f);
             return this;
         }
         auto
-        reinit(common::noncopyable_function<_R()>&& f,typename next_able<void>::_running_context_type_& c){
+        reinit(common::ncpy_func<_R()>&& f,typename next_able<void>::_running_context_type_& c){
             flow_base<void,_R,startor>::reinit();
-            this->_func=std::forward<common::noncopyable_function<_R()>>(f);
+            this->_func=std::forward<common::ncpy_func<_R()>>(f);
             this->set_schedule_context(c);
             return this;
         }
 
-        common::noncopyable_function<_R()> _func;
+        common::ncpy_func<_R()> _func;
 
         ALWAYS_INLINE void
         submit() override {

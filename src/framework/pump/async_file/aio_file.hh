@@ -14,7 +14,7 @@
 #include <pump/reactor/flow.hh>
 #include <moodycamel/concurrentqueue.h>
 #include <variant>
-#include <common/noncopyable_function.hh>
+#include <common/ncpy_func.hh>
 
 namespace aio{
     struct aio_cb_args{
@@ -53,7 +53,7 @@ namespace aio{
 
     class
     aio_file_flow : public reactor::flow<_aio_cb_event_type_,aio_cb_args,true>{
-        common::noncopyable_function<void()> aio_submit_func;
+        common::ncpy_func<void()> aio_submit_func;
     public:
         [[gnu::always_inline]][[gnu::hot]]
         void

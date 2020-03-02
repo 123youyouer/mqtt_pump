@@ -79,8 +79,8 @@ namespace reactor{
         static void
         apply(
                 reactor::task_schedule_center<net::_read_event_type_>* dst,
-                common::noncopyable_function<void(net::_read_event_type_&&)>&& f){
-            dst->push(std::forward<common::noncopyable_function<void(net::_read_event_type_&&)>>(f));
+                common::ncpy_func<void(net::_read_event_type_&&)>&& f){
+            dst->push(std::forward<common::ncpy_func<void(net::_read_event_type_&&)>>(f));
         }
     };
     template <typename _T0>
@@ -89,10 +89,10 @@ namespace reactor{
         static void
         apply(
                 reactor::task_schedule_center<net::_read_event_type_>* dst,
-                common::noncopyable_function<void(net::_read_event_type_&&)>&& f){
+                common::ncpy_func<void(net::_read_event_type_&&)>&& f){
             schedule_to<reactor::task_schedule_center<net::_read_event_type_>>::apply(
                     dst,
-                    std::forward<common::noncopyable_function<void(net::_read_event_type_&&)>>(f));
+                    std::forward<common::ncpy_func<void(net::_read_event_type_&&)>>(f));
         }
     };
     template <>
@@ -112,17 +112,17 @@ namespace reactor{
     struct
     schedule_to<reactor::task_schedule_center<net::session_sendable_event>>{
         static void
-        apply(reactor::task_schedule_center<net::session_sendable_event>* dst,common::noncopyable_function<void(net::session_sendable_event&&)>&& f){
-            dst->push(std::forward<common::noncopyable_function<void(net::session_sendable_event&&)>>(f));
+        apply(reactor::task_schedule_center<net::session_sendable_event>* dst,common::ncpy_func<void(net::session_sendable_event&&)>&& f){
+            dst->push(std::forward<common::ncpy_func<void(net::session_sendable_event&&)>>(f));
         }
     };
     template <typename _T0>
     struct
     schedule_to<_T0,reactor::task_schedule_center<net::session_sendable_event>>{
         static void
-        apply(reactor::task_schedule_center<net::session_sendable_event>* dst,common::noncopyable_function<void(net::session_sendable_event&&)>&& f){
+        apply(reactor::task_schedule_center<net::session_sendable_event>* dst,common::ncpy_func<void(net::session_sendable_event&&)>&& f){
             schedule_to<reactor::task_schedule_center<net::session_sendable_event>>
-            ::apply(dst,std::forward<common::noncopyable_function<void(net::session_sendable_event&&)>>(f));
+            ::apply(dst,std::forward<common::ncpy_func<void(net::session_sendable_event&&)>>(f));
         }
     };
 }

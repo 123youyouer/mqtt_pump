@@ -5,110 +5,171 @@
 #include <iostream>
 #include <tuple>
 #include <cstring>
-#include <rte_ring.h>
-#include <rte_mempool.h>
-#include <ff_api.h>
 #include <engine/reactor/flow.hh>
+#include <engine/reactor/task_runner_apply.hh>
+#include <engine/net/tcp_listener.hh>
+#include <engine/engine.hh>
+#include <common/unique_func.hh>
 
-rte_ring* primary_ring= nullptr;
-rte_mempool* message_pool;
-struct init_struct{
-    int kq;
-    int sd;
-    kevent* pkevset;
-    kevent events[512];
-    init_struct(int k,int s,kevent* p):kq(k),sd(s),pkevset(p){}
-};
+#pragma clang diagnostic push
+#pragma ide diagnostic ignored "InfiniteRecursion"
+void
+echo_proc(engine::net::tcp_session&& session,int timeout){
+    session.wait_packet_with_timeout(timeout)
+            .to_schedule(engine::reactor::_sp_global_task_center_)
+            .then([s=std::forward<engine::net::tcp_session>(session),timeout](FLOW_ARG(std::variant<int,common::linear_ringbuffer_st*>)&& v)mutable{
+                switch (v.index()) {
+                    case 0:
+                    case 1:
+                        return;
+                    case 2:
+                        std::variant<int,common::linear_ringbuffer_st*> d=std::get<2>(v);
+                        switch(d.index()){
+                            case 0:
+                            {
+                                std::cout<<"time out"<<std::endl;
+                                char* sz=new char[10];
+                                sprintf(sz,"time out");
+                                s.send_packet(sz,10)
+                                        .to_schedule(engine::reactor::_sp_global_task_center_)
+                                        .then([s=std::forward<engine::net::tcp_session>(s),sz](FLOW_ARG(engine::net::send_proxy)&& v)mutable{
+                                            delete[] sz;
+                                            s._data->close();
+                                        })
+                                        .submit();
+                                break;
+                            }
+                            case 1:
+                            {
+                                common::linear_ringbuffer_st* data=std::get<common::linear_ringbuffer_st*>(d);
+                                size_t l=data->size();
+                                char* sz=new char[l];
+                                memcpy(sz,data->read_head(),l);
+                                data->consume(l);
+                                s.send_packet(sz,l)
+                                        .to_schedule(engine::reactor::_sp_global_task_center_)
+                                        .then([sz](FLOW_ARG(engine::net::send_proxy)&& v)mutable{
+                                            delete[] sz;
+                                        })
+                                        .submit();
+                                echo_proc(std::forward<engine::net::tcp_session>(s),timeout);
+                                break;
+                            }
+                        }
+                        return;
+                }
 
-struct connect_data{
-    int fd;
-};
+            })
+            .submit();
+}
 
+void
+wait_connect_proc(std::shared_ptr<engine::net::tcp_listener> l){
+    engine::net::wait_connect(l)
+            .to_schedule(engine::reactor::_sp_global_task_center_)
+            .then([l](FLOW_ARG(engine::net::tcp_session)&& v){
+                switch (v.index()){
+                    case 0:
+                    case 1:
+                        return;
+                    case 2:
+                        std::cout<<"new connection"<<std::endl;
+                        echo_proc(std::forward<engine::net::tcp_session>(std::get<engine::net::tcp_session>(v)),10000);
+                        wait_connect_proc(l);
+                }
+            })
+            .submit();
+}
+template <typename F> engine::reactor::flow_builder<std::result_of_t<F(FLOW_ARG()&&)>>
+keep_doing(F&& f){
+    using _R_=std::result_of_t<F(FLOW_ARG()&&)>;
+    return engine::reactor::make_task_flow()
+            .then(std::forward<F>(f))
+            .then([f=std::forward<F>(f)](FLOW_ARG(_R_)&& v){
+                switch (v.index()){
+                    case 0:
+                    case 1:
+                        std::rethrow_exception(std::get<std::exception_ptr>(v));
+                    default:
+                        auto r=std::get<_R_>(v);
+                        if(!r)
+                            return engine::reactor::make_imme_flow()
+                                    .then([r=std::forward<_R_>(r)](FLOW_ARG()&& v){
+                                        return r;
+                                    })
+                                    .to_schedule(engine::reactor::_sp_global_task_center_);
+                        else
+                            return keep_doing(f);
+
+                }
+            });
+}
+#pragma clang diagnostic pop
 
 int main(int argc,char* argv[]){
+    int i=10;
+    keep_doing([&i](FLOW_ARG()&& v){
+        std::cout<<i<<std::endl;
+        return --i;
+    })
+            .then([](FLOW_ARG(int)&& v){
+                std::cout<<1234<<std::endl;
+            })
+            .submit();
 
-    engine::reactor::test1();
+    for(int i=0;i<1000;++i)
 
-    ff_init(argc,argv);
+    engine::reactor::_sp_global_task_center_->run();
 
-    rte_ring* x[RTE_MAX_LCORE];
-
-    if(rte_eal_process_type() == RTE_PROC_PRIMARY){
-        primary_ring=rte_ring_create("PRIMARY_RING",64,rte_socket_id(),0);
-        message_pool = rte_mempool_create("PRIMARY_RING", 1024,
-                                          sizeof(connect_data), 0, 0,
-                                          NULL, NULL, NULL, NULL,
-                                          rte_socket_id(), 0);
-    }
-    else{
-        primary_ring=rte_ring_lookup("PRIMARY_RING");
-        message_pool=rte_mempool_lookup("PRIMARY_RING");
-    }
-
-    ff_run
-            (
-                    [](void* arg){
-                        auto a= static_cast<init_struct*>(arg);
-                        timespec ts;
-                        ts.tv_nsec=0;
-                        ts.tv_sec=0;
-                        uint32_t nevents=ff_kevent(a->kq, nullptr, 0, a->events,512, nullptr);
-                        for(int i=0;i<nevents;++i){
-                            if(a->events[i].flags&EV_EOF){
-                                ff_close(static_cast<int>(a->events[i].ident));
-                                continue;
-                            }
-                            if(a->sd== static_cast<int>(a->events[i].ident)){
-                                int count= static_cast<int>(a->events[i].data);
-                                std::cout<<count<<std::endl;
-                                do{
-
-                                    int fd=ff_accept(a->sd, nullptr, nullptr);
-
-                                    EV_SET(a->pkevset, fd, EVFILT_READ, EV_ADD, 0, 0, nullptr);
-                                    ff_kevent(a->kq,a->pkevset,1, nullptr,0, nullptr);
-                                    std::cout<<"000000000000"<<std::endl;
-
-                                }
-                                while(--count);
-                                continue;
-                            }
-                            if(EVFILT_READ==a->events[i].filter){
-                                char buf[256];
-                                std::cout<<"111111111111"<<std::endl;
-                                size_t len=ff_read(static_cast<int>(a->events[i].ident),buf, sizeof(buf));
-                                std::cout<<"222222222222"<<std::endl;
-                                ff_write(static_cast<int>(a->events[i].ident),buf,len);
-                                std::cout<<"recv in core"<<rte_lcore_id()<<std::endl;
-                                continue;
-                            }
-                            std::cout<<"unknown event:"<< a->events[i].flags<<std::endl;
+    engine::wait_engine_initialled(argc,argv)
+            .then([](FLOW_ARG(std::shared_ptr<engine::glb_context>)&& a){
+                switch(a.index()){
+                    case 0:
+                        throw std::invalid_argument("std::monostate");
+                    case 1:
+                        std::rethrow_exception(std::get<std::exception_ptr>(a));
+                    default:
+                        std::cout<<"inited"<<std::endl;
+                        std::shared_ptr<engine::glb_context> _c=std::get<std::shared_ptr<engine::glb_context>>(a);
+                        wait_connect_proc(engine::net::start_tcp_listen(_c->kqfd, 9022));
+                        return _c;
+                }
+            })
+            .then([](FLOW_ARG(std::shared_ptr<engine::glb_context>)&& a){
+                switch(a.index()){
+                    case 0:
+                        throw std::invalid_argument("std::monostate");
+                    case 1:
+                        std::rethrow_exception(std::get<std::exception_ptr>(a));
+                    default:
+                        try {
+                            engine::engine_run(
+                                    std::get<std::shared_ptr<engine::glb_context>>(a),
+                                    [](){}
+                            );
                         }
-
-                        return 0;
-                    },
-                    []()->void*{
-
-                        int kq=ff_kqueue();
-                        kevent* pkevset=new kevent();
-
-                        int sd = ff_socket(AF_INET, SOCK_STREAM, 0);
-                        sockaddr_in my_addr;
-                        memset(&my_addr, sizeof(my_addr),0);
-                        my_addr.sin_family = AF_INET;
-                        my_addr.sin_port = htons(80);
-                        my_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-                        ff_bind(sd, (struct linux_sockaddr *)&my_addr, sizeof(my_addr));
-                        //int reusepoer=1;
-                        //std::cout<<ff_setsockopt(sd,SOL_SOCKET,SO_REUSEPORT,&reusepoer, sizeof(int))<<std::endl;
-                        ff_listen(sd, 512);
-
-                        EV_SET(pkevset, sd, EVFILT_READ, EV_ADD, 0, 512, nullptr);
-                        ff_kevent(kq, pkevset, 1, nullptr, 0, nullptr);
-                        return new init_struct(kq,sd,pkevset);
-
-                    }()
-            );
+                        catch (...){
+                            throw std::current_exception();
+                        }
+                }
+            })
+            .then([](FLOW_ARG()&& a){
+                switch(a.index()){
+                    case 0:
+                        std::cout<<"std::monostate"<<std::endl;
+                    default:
+                        try {
+                            std::rethrow_exception(std::get<std::exception_ptr>(a));
+                        }
+                        catch (std::exception& e){
+                            std::cout<<e.what()<<std::endl;
+                        }
+                        catch (...){
+                            std::cout<<"unkonwn exception ... "<<std::endl;
+                        }
+                }
+            })
+            .submit();
 
     return 0;
 }

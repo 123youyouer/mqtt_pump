@@ -28,7 +28,7 @@
 namespace common {
 
 template <typename Signature>
-class noncopyable_function;
+class ncpy_func;
 
 namespace internal {
 
@@ -66,7 +66,7 @@ private:
     storage _storage;
 
     template <typename Signature>
-    friend class common::noncopyable_function;
+    friend class common::ncpy_func;
 };
 
 }
@@ -74,8 +74,8 @@ private:
 /// A clone of \c std::function, but only invokes the move constructor
 /// of the contained function.
 template <typename Ret, typename... Args>
-class noncopyable_function<Ret (Args...)> : private internal::noncopyable_function_base {
-    using call_type = Ret (*)(const noncopyable_function* func, Args...);
+class ncpy_func<Ret (Args...)> : private internal::noncopyable_function_base {
+    using call_type = Ret (*)(const ncpy_func* func, Args...);
     struct vtable {
         const call_type call;
         const move_type move;
@@ -84,7 +84,7 @@ class noncopyable_function<Ret (Args...)> : private internal::noncopyable_functi
 private:
     const vtable* _vtable;
 private:
-    static Ret empty_call(const noncopyable_function* func, Args... args) {
+    static Ret empty_call(const ncpy_func* func, Args... args) {
         throw std::bad_function_call();
     }
 
@@ -92,11 +92,11 @@ private:
 
     template <typename Func>
     struct direct_vtable_for {
-        static Func* access(noncopyable_function* func) { return reinterpret_cast<Func*>(func->_storage.direct); }
-        static const Func* access(const noncopyable_function* func) { return reinterpret_cast<const Func*>(func->_storage.direct); }
-        static Func* access(noncopyable_function_base* func) { return access(static_cast<noncopyable_function*>(func)); }
-        static Ret call(const noncopyable_function* func, Args... args) {
-            return (*access(const_cast<noncopyable_function*>(func)))(std::forward<Args>(args)...);
+        static Func* access(ncpy_func* func) { return reinterpret_cast<Func*>(func->_storage.direct); }
+        static const Func* access(const ncpy_func* func) { return reinterpret_cast<const Func*>(func->_storage.direct); }
+        static Func* access(noncopyable_function_base* func) { return access(static_cast<ncpy_func*>(func)); }
+        static Ret call(const ncpy_func* func, Args... args) {
+            return (*access(const_cast<ncpy_func*>(func)))(std::forward<Args>(args)...);
         }
         static void move(noncopyable_function_base* from, noncopyable_function_base* to) {
             new (access(to)) Func(std::move(*access(from)));
@@ -113,7 +113,7 @@ private:
         static constexpr destroy_type select_destroy_thunk() {
             return std::is_trivially_destructible<Func>::value ? trivial_direct_destroy : destroy;
         }
-        static void initialize(Func&& from, noncopyable_function* to) {
+        static void initialize(Func&& from, ncpy_func* to) {
             new (access(to)) Func(std::move(from));
         }
         static constexpr vtable make_vtable() { return { call, select_move_thunk(), select_destroy_thunk() }; }
@@ -121,16 +121,16 @@ private:
     };
     template <typename Func>
     struct indirect_vtable_for {
-        static Func* access(noncopyable_function* func) { return reinterpret_cast<Func*>(func->_storage.indirect); }
-        static const Func* access(const noncopyable_function* func) { return reinterpret_cast<const Func*>(func->_storage.indirect); }
-        static Func* access(noncopyable_function_base* func) { return access(static_cast<noncopyable_function*>(func)); }
-        static Ret call(const noncopyable_function* func, Args... args) {
-            return (*access(const_cast<noncopyable_function*>(func)))(std::forward<Args>(args)...);
+        static Func* access(ncpy_func* func) { return reinterpret_cast<Func*>(func->_storage.indirect); }
+        static const Func* access(const ncpy_func* func) { return reinterpret_cast<const Func*>(func->_storage.indirect); }
+        static Func* access(noncopyable_function_base* func) { return access(static_cast<ncpy_func*>(func)); }
+        static Ret call(const ncpy_func* func, Args... args) {
+            return (*access(const_cast<ncpy_func*>(func)))(std::forward<Args>(args)...);
         }
         static void destroy(noncopyable_function_base* func) {
             delete access(func);
         }
-        static void initialize(Func&& from, noncopyable_function* to) {
+        static void initialize(Func&& from, ncpy_func* to) {
             to->_storage.indirect = new Func(std::move(from));
         }
         static constexpr vtable make_vtable() { return { call, indirect_move, destroy }; }
@@ -148,32 +148,32 @@ private:
     template <typename Func>
     struct vtable_for : select_vtable_for<Func, is_direct<Func>()> {};
 public:
-    noncopyable_function() noexcept : _vtable(&_s_empty_vtable) {}
+    ncpy_func() noexcept : _vtable(&_s_empty_vtable) {}
     template <typename Func>
-    noncopyable_function(Func func) {
+    ncpy_func(Func func) {
         vtable_for<Func>::initialize(std::move(func), this);
         _vtable = &vtable_for<Func>::s_vtable;
     }
     template <typename Object, typename... AllButFirstArg>
-    noncopyable_function(Ret (Object::*member)(AllButFirstArg...)) : noncopyable_function(std::mem_fn(member)) {}
+    ncpy_func(Ret (Object::*member)(AllButFirstArg...)) : ncpy_func(std::mem_fn(member)) {}
     template <typename Object, typename... AllButFirstArg>
-    noncopyable_function(Ret (Object::*member)(AllButFirstArg...) const) : noncopyable_function(std::mem_fn(member)) {}
+    ncpy_func(Ret (Object::*member)(AllButFirstArg...) const) : ncpy_func(std::mem_fn(member)) {}
 
-    ~noncopyable_function() {
+    ~ncpy_func() {
         _vtable->destroy(this);
     }
 
-    noncopyable_function(const noncopyable_function&) = delete;
-    noncopyable_function& operator=(const noncopyable_function&) = delete;
+    ncpy_func(const ncpy_func&) = delete;
+    ncpy_func& operator=(const ncpy_func&) = delete;
 
-    noncopyable_function(noncopyable_function&& x) noexcept : _vtable(std::exchange(x._vtable, &_s_empty_vtable)) {
+    ncpy_func(ncpy_func&& x) noexcept : _vtable(std::exchange(x._vtable, &_s_empty_vtable)) {
         _vtable->move(&x, this);
     }
 
-    noncopyable_function& operator=(noncopyable_function&& x) noexcept {
+    ncpy_func& operator=(ncpy_func&& x) noexcept {
         if (this != &x) {
-            this->~noncopyable_function();
-            new (this) noncopyable_function(std::move(x));
+            this->~ncpy_func();
+            new (this) ncpy_func(std::move(x));
         }
         return *this;
     }
@@ -189,18 +189,18 @@ public:
 
 
 template <typename Ret, typename... Args>
-constexpr typename noncopyable_function<Ret (Args...)>::vtable noncopyable_function<Ret (Args...)>::_s_empty_vtable;
+constexpr typename ncpy_func<Ret (Args...)>::vtable ncpy_func<Ret (Args...)>::_s_empty_vtable;
 
 template <typename Ret, typename... Args>
 template <typename Func>
-const typename noncopyable_function<Ret (Args...)>::vtable noncopyable_function<Ret (Args...)>::direct_vtable_for<Func>::s_vtable
-        = noncopyable_function<Ret (Args...)>::direct_vtable_for<Func>::make_vtable();
+const typename ncpy_func<Ret (Args...)>::vtable ncpy_func<Ret (Args...)>::direct_vtable_for<Func>::s_vtable
+        = ncpy_func<Ret (Args...)>::direct_vtable_for<Func>::make_vtable();
 
 
 template <typename Ret, typename... Args>
 template <typename Func>
-const typename noncopyable_function<Ret (Args...)>::vtable noncopyable_function<Ret (Args...)>::indirect_vtable_for<Func>::s_vtable
-        = noncopyable_function<Ret (Args...)>::indirect_vtable_for<Func>::make_vtable();
+const typename ncpy_func<Ret (Args...)>::vtable ncpy_func<Ret (Args...)>::indirect_vtable_for<Func>::s_vtable
+        = ncpy_func<Ret (Args...)>::indirect_vtable_for<Func>::make_vtable();
 
 }
 

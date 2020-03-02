@@ -8,7 +8,7 @@
 #include <boost/noncopyable.hpp>
 #include <boost/heap/priority_queue.hpp>
 #include <boost/optional.hpp>
-#include <common/noncopyable_function.hh>
+#include <common/ncpy_func.hh>
 #include <sys/time.h>
 #include <strings.h>
 #include <pump/hw/cpu.hh>
@@ -33,13 +33,13 @@ namespace timer{
     timer_obj:boost::noncopyable{
     public:
         uint64_t timestamp;
-        common::noncopyable_function<void()> cb;
+        common::ncpy_func<void()> cb;
         bool operator < (const timer_obj& o)const{
             return timestamp>o.timestamp;
         }
         template <typename _F>
         explicit timer_obj(uint64_t delay,_F&& f):timestamp(compute_timestamp(delay)),cb(f){};
-        timer_obj(timer_obj&& o)noexcept:timestamp(o.timestamp),cb(std::forward<common::noncopyable_function<void()>>(o.cb)){};
+        timer_obj(timer_obj&& o)noexcept:timestamp(o.timestamp),cb(std::forward<common::ncpy_func<void()>>(o.cb)){};
         timer_obj& operator = (timer_obj&& o){
             if (this != &o) {
                 this->~timer_obj();

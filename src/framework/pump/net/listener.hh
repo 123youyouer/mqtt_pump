@@ -47,14 +47,14 @@ namespace reactor{
     };
     template <>
     struct schedule_to<reactor::task_schedule_center<net::connection_data>>{
-        static void apply(reactor::task_schedule_center<net::connection_data>* dst,common::noncopyable_function<void(net::connection_data&&)>&& f){
-            dst->push(std::forward<common::noncopyable_function<void(net::connection_data&&)>>(f));
+        static void apply(reactor::task_schedule_center<net::connection_data>* dst,common::ncpy_func<void(net::connection_data&&)>&& f){
+            dst->push(std::forward<common::ncpy_func<void(net::connection_data&&)>>(f));
         }
     };
     template <typename _T0>
     struct schedule_to<_T0,reactor::task_schedule_center<net::connection_data>>{
-        static void apply(reactor::task_schedule_center<net::connection_data>* dst,common::noncopyable_function<void(net::connection_data&&)>&& f){
-            schedule_to<reactor::task_schedule_center<net::connection_data>>::apply(dst,std::forward<common::noncopyable_function<void(net::connection_data&&)>>(f));
+        static void apply(reactor::task_schedule_center<net::connection_data>* dst,common::ncpy_func<void(net::connection_data&&)>&& f){
+            schedule_to<reactor::task_schedule_center<net::connection_data>>::apply(dst,std::forward<common::ncpy_func<void(net::connection_data&&)>>(f));
         }
     };
 }
