@@ -54,6 +54,18 @@ namespace common {
         const_iterator end() const noexcept;
         const_iterator cend() const noexcept;
 
+
+        inline void pop_uint_8(uint8_t& v){
+            std::memcpy(&v,read_head(),1);
+            consume(1);
+        }
+        inline uint8_t pop_uint_8(){
+            uint8_t v;
+            std::memcpy(&v,read_head(),1);
+            consume(1);
+            return v;
+        }
+
         // Plumbing
 
         linear_ringbuffer_(linear_ringbuffer_&& other) noexcept;
@@ -85,7 +97,7 @@ namespace common {
     };
 
 
-    using linear_ringbuffer_st = linear_ringbuffer_<int64_t>;
+    using ringbuffer = linear_ringbuffer_<int64_t>;
     using linear_ringbuffer_mt = linear_ringbuffer_<std::atomic<int64_t>>;
     using linear_ringbuffer = linear_ringbuffer_mt;
 

@@ -22,6 +22,7 @@ set(DPDKLIBS
         -Wl,--no-whole-archive)
 
 target_link_libraries(mqtt_pump
+        boost_program_options
         ${DPDKLIBS}
         pthread
         rt
