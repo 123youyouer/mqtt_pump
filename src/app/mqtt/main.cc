@@ -6,7 +6,6 @@
 #include <tuple>
 #include <cstring>
 #include <engine/reactor/flow.hh>
-#include <engine/reactor/task_runner_apply.hh>
 #include <engine/net/tcp_listener.hh>
 #include <engine/engine.hh>
 #include <common/unique_func.hh>

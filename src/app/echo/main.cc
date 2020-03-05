@@ -1,212 +1,102 @@
 //
 // Created by null on 20-2-1.
 //
-#include <boost/program_options.hpp>
-#include <pump/net/tcp_session.hh>
-#include <pump/logger/logger.hh>
-#include <pump/utils/lru_cache.hh>
-#include <pump/data/unaligned_cast.hh>
-#include <pump/timer/timer_set.hh>
-#include <pump/pump.hh>
-#pragma clang diagnostic push
-#pragma ide diagnostic ignored "InfiniteRecursion"
+#include <string>
+#include <iostream>
+#include <cstring>
+#include <engine/reactor/flow.hh>
+#include <engine/net/tcp_listener.hh>
+#include <engine/engine.hh>
+#include <common/unique_func.hh>
 
 void
-wait_ping(net::tcp_session& session){
-    session.wait_packet()
-            .then([&session](net::linear_ringbuffer_st *buf)mutable{
-                session.send_data(buf->read_head(),buf->size())
-                        .then([&session,buf,len=buf->size()](){
-                            buf->consume(len);
-                            wait_ping(session);
-                        })
-                        .submit();
-            })
-            .when_exception([&session](std::exception_ptr p){
-                try{
-                    if(p)
-                        std::rethrow_exception(p);
-                }
-                catch (const net::tcp_session_exception& e){
-                    logger::info("tcp session exception :{0} session closed",e.code);
-                }
-                catch (const std::exception& e){
-                    std::cout<<e.what()<<std::endl;
-                }
-                catch (...){
-                    logger::info("cant catch exception in flow::when_exception");
-                }
-                return false;
-            })
-            .submit();
-}
-
-template<uint16_t _PORT_>
-void run_echo(net::listener<_PORT_>& l){
-    net::wait_connect(l)
-            .then([&l](net::session_data &&session_d) {
-                net::tcp_session *s = new net::tcp_session(session_d);
-                wait_ping(s->start_at(hw::cpu_core::_01));
-                run_echo(l);
-            })
-            .submit();
-}
-#pragma clang diagnostic pop
-
-#include <boost/intrusive/list.hpp>
-#include <pump/data/cahce.hh>
-class tag_1{};
-using lm=boost::intrusive::link_mode<boost::intrusive::auto_unlink>;
-using BaseHook = boost::intrusive::list_base_hook<lm>;
-class adata : public BaseHook{
-public:
-    int a;
-    explicit adata(int _a):a(_a){}
-};
-typedef boost::intrusive::list<adata, boost::intrusive::base_hook<BaseHook>,boost::intrusive::constant_time_size<false>> FooList;
-thread_local data::cache_lsu<int,std::string> cache_on_thread;
-
-uint64_t t=0;
-
-ALWAYS_INLINE void
-test(int cpu,int count){
-    reactor::at_cpu(hw::cpu_core(cpu))
-            .then([](){
-                cache_on_thread.push("1",std::make_shared<int>(1));
-                cache_on_thread.push("2",std::make_shared<int>(2));
-                cache_on_thread.push("3",std::make_shared<int>(3));
-                cache_on_thread.push("4",std::make_shared<int>(4));
-                cache_on_thread.push("5",std::make_shared<int>(5));
-            })
-            .then([](){
-                cache_on_thread.push("1",std::make_shared<int>(1));
-                cache_on_thread.push("2",std::make_shared<int>(2));
-                cache_on_thread.push("3",std::make_shared<int>(3));
-                cache_on_thread.push("4",std::make_shared<int>(4));
-                cache_on_thread.push("5",std::make_shared<int>(5));
-            })
-            .then([](){
-                cache_on_thread.push("1",std::make_shared<int>(1));
-                cache_on_thread.push("2",std::make_shared<int>(2));
-                cache_on_thread.push("3",std::make_shared<int>(3));
-                cache_on_thread.push("4",std::make_shared<int>(4));
-                cache_on_thread.push("5",std::make_shared<int>(5));
-            })
-            .then([](){
-                cache_on_thread.push("1",std::make_shared<int>(1));
-                cache_on_thread.push("2",std::make_shared<int>(2));
-                cache_on_thread.push("3",std::make_shared<int>(3));
-                cache_on_thread.push("4",std::make_shared<int>(4));
-                cache_on_thread.push("5",std::make_shared<int>(5));
-            })
-            .then([](){
-                cache_on_thread.push("1",std::make_shared<int>(1));
-                cache_on_thread.push("2",std::make_shared<int>(2));
-                cache_on_thread.push("3",std::make_shared<int>(3));
-                cache_on_thread.push("4",std::make_shared<int>(4));
-                cache_on_thread.push("5",std::make_shared<int>(5));
-            })
-            .then([cpu,i=count](){
-                if((i)<2000){
-                    test(cpu,i+1);
-                }
-                else{
-                    std::cout<<"..."<<timer::now_tick()-t<<std::endl;
+echo_proc(engine::net::tcp_session&& session,int timeout){
+    session.wait_packet(timeout)
+            .to_schedule(engine::reactor::_sp_global_task_center_)
+            .then([s=std::forward<engine::net::tcp_session>(session),timeout](FLOW_ARG(std::variant<int,common::ringbuffer*>)&& v)mutable{
+                ____forward_flow_monostate_exception(v);
+                std::variant<int,common::ringbuffer*> d=std::get<2>(v);
+                switch(d.index()){
+                    case 0:
+                    {
+                        std::cout<<"time out"<<std::endl;
+                        char* sz=new char[10];
+                        sprintf(sz,"time out");
+                        s.send_packet(sz,10)
+                                .to_schedule(engine::reactor::_sp_global_task_center_)
+                                .then([s=std::forward<engine::net::tcp_session>(s),sz](FLOW_ARG(engine::net::send_proxy)&& v)mutable{
+                                    delete[] sz;
+                                    s._data->close();
+                                })
+                                .submit();
+                        break;
+                    }
+                    case 1:
+                    {
+                        common::ringbuffer* data=std::get<common::ringbuffer*>(d);
+                        size_t l=data->size();
+                        char* sz=new char[l];
+                        memcpy(sz,data->read_head(),l);
+                        data->consume(l);
+                        s.send_packet(sz,l)
+                                .to_schedule(engine::reactor::_sp_global_task_center_)
+                                .then([sz](FLOW_ARG(engine::net::send_proxy)&& v)mutable{
+                                    delete[] sz;
+                                })
+                                .submit();
+                        echo_proc(std::forward<engine::net::tcp_session>(s),timeout);
+                        break;
+                    }
                 }
             })
             .submit();
 }
-class nocopy:boost::noncopyable{
-public:
-    int b;
-    nocopy(int _b):b(_b){
-        std::cout<<"nocopy()"<<std::endl;
-    }
-    ~nocopy(){
-        std::cout<<"~nocopy()"<<std::endl;
-    }
-    nocopy(nocopy&& n){
-        std::cout<<"nocopy(n)"<<std::endl;
-    }
-};
+
+void
+wait_connect_proc(std::shared_ptr<engine::net::tcp_listener> l){
+    engine::net::wait_connect(l)
+            .to_schedule(engine::reactor::_sp_global_task_center_)
+            .then([l](FLOW_ARG(engine::net::tcp_session)&& v){
+                ____forward_flow_monostate_exception(v);
+                std::cout<<"new connection"<<std::endl;
+                auto&& s=std::get<engine::net::tcp_session>(v);
+                echo_proc(std::forward<engine::net::tcp_session>(std::get<engine::net::tcp_session>(v)),20000);
+                wait_connect_proc(l);
+            })
+            .submit();
+}
+
 int main(int argc, char * argv[]){
-
-
-
-    boost::program_options::options_description ops;
-
-    std::string config;
-
-    ops.add_options()
-            ("cofig",boost::program_options::value<std::string>(&config)->default_value("config.ini"));
-
-    boost::program_options::variables_map vm;
-
-    try{
-        boost::program_options::store(boost::program_options::parse_command_line(argc, argv, ops), vm);
-    }
-    catch(...){
-        std::cout << "输入的参数中存在未定义的选项！\n";
-        return 0;
-    }
-
-
-    hw::pin_this_thread(0);
-    sleep(1);
-    //hw::the_cpu_count=1;
-    engine::init_engine
-            <
-                    reactor::sortable_task<common::ncpy_func<void()>,1>,
-                    reactor::sortable_task<common::ncpy_func<void()>,2>
-            >();
-    sleep(1);
-
-
-    reactor::at_cpu(hw::cpu_core::_01)
-            .then([](){
-                return nocopy(10);
+    engine::wait_engine_initialled(argc,argv)
+            .then([](FLOW_ARG(std::shared_ptr<engine::glb_context>)&& a){
+                ____forward_flow_monostate_exception(a);
+                std::cout<<"inited"<<std::endl;
+                std::shared_ptr<engine::glb_context> _c=std::get<std::shared_ptr<engine::glb_context>>(a);
+                wait_connect_proc(engine::net::start_tcp_listen(_c->kqfd, 9022));
+                return _c;
             })
-            .then([](nocopy&& n){
-                return std::forward<nocopy>(n);
+            .then([](FLOW_ARG(std::shared_ptr<engine::glb_context>)&& a){
+                ____forward_flow_monostate_exception(a);
+                engine::engine_run(
+                        std::get<std::shared_ptr<engine::glb_context>>(a),
+                        [](){}
+                );
             })
-            .then([](nocopy&& n){
-                return std::forward<nocopy>(n);
+            .then([](FLOW_ARG()&& a){
+                switch(a.index()){
+                    case 0:
+                        std::cout<<"std::monostate"<<std::endl;
+                    default:
+                        try {
+                            std::rethrow_exception(std::get<std::exception_ptr>(a));
+                        }
+                        catch (std::exception& e){
+                            std::cout<<e.what()<<std::endl;
+                        }
+                        catch (...){
+                            std::cout<<"unkonwn exception ... "<<std::endl;
+                        }
+                }
             })
             .submit();
-    sleep(10000);
-
-    t=timer::now_tick();
-    std::cout<<t<<std::endl;
-    for(int i=0;i<hw::the_cpu_count;++i){
-        for(int j=0;j<1000;j++)
-            test(i,0);
-    }
-    /*
-    reactor::at_cpu(hw::cpu_core::_01)
-            .then([](){
-                cache_on_thread.push("1",std::make_shared<std::string>("2"));
-                return 10;
-            })
-            .at_cpu(hw::cpu_core::_02)
-            .then([](int&& i){
-                cache_on_thread.push("1",std::make_shared<std::string>("3"));
-            })
-            .at_cpu(hw::cpu_core::_01)
-            .then([](){
-                auto x=(*std::get<2>(*(std::get<1>(cache_on_thread.find("1")))));
-                logger::info("{}",x);
-            })
-            .at_cpu(hw::cpu_core::_02)
-            .then([](){
-                auto x=(*std::get<2>(*(std::get<1>(cache_on_thread.find("1")))));
-                logger::info("{}",x);
-            })
-            .submit();
-
-    logger::info("echo server started ......");
-    run_echo(net::tcp_listener<9022>::instance.start_at(hw::cpu_core::_01));
-    logger::info("echo server listen at {}",9022);
-     */
-    sleep(10000);
-    return 0;
 }
