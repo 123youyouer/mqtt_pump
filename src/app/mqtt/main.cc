@@ -13,6 +13,9 @@
 
 #pragma clang diagnostic push
 #pragma ide diagnostic ignored "InfiniteRecursion"
+
+std::shared_ptr<engine::glb_context> this_context;
+
 void
 echo_proc(engine::net::tcp_session&& session,int timeout){
     session.wait_packet(timeout)
@@ -29,6 +32,7 @@ echo_proc(engine::net::tcp_session&& session,int timeout){
                         s.send_packet(sz,10)
                                 .to_schedule(engine::reactor::_sp_global_task_center_)
                                 .then([s=std::forward<engine::net::tcp_session>(s),sz](FLOW_ARG(engine::net::send_proxy)&& v)mutable{
+                                    ____forward_flow_monostate_exception(v);
                                     delete[] sz;
                                     s._data->close();
                                 })
@@ -42,10 +46,32 @@ echo_proc(engine::net::tcp_session&& session,int timeout){
                         char* sz=new char[l];
                         memcpy(sz,data->read_head(),l);
                         data->consume(l);
+                        std::cout<<sz<<std::endl;
                         s.send_packet(sz,l)
                                 .to_schedule(engine::reactor::_sp_global_task_center_)
                                 .then([sz](FLOW_ARG(engine::net::send_proxy)&& v)mutable{
+                                    ____forward_flow_monostate_exception(v);
                                     delete[] sz;
+                                })
+                                .then([](FLOW_ARG()&& v){
+                                    auto* msg=reinterpret_cast<engine::dpdk_channel::channel_msg*>(new char[engine::dpdk_channel::channel_msg_size]);
+                                    msg->cmd=10;
+                                    msg->len=10;
+                                    sprintf(msg->data,"recv message at[%d]",rte_lcore_id());
+                                    if(rte_lcore_id()==0)
+                                        engine::dpdk_channel::push_channel_msg(msg,this_context->oter_rings[1],this_context->oter_message_pool[1])
+                                                .then([msg](FLOW_ARG()&& v){
+                                                    delete[] reinterpret_cast<char*>(msg);
+                                                    ____forward_flow_monostate_exception(v);
+                                                })
+                                                .submit();
+                                    else
+                                        engine::dpdk_channel::push_channel_msg(msg,this_context->oter_rings[0],this_context->oter_message_pool[0])
+                                                .then([msg](FLOW_ARG()&& v){
+                                                    delete[] reinterpret_cast<char*>(msg);
+                                                    ____forward_flow_monostate_exception(v);
+                                                })
+                                                .submit();
                                 })
                                 .submit();
                         echo_proc(std::forward<engine::net::tcp_session>(s),timeout);
@@ -70,6 +96,21 @@ wait_connect_proc(std::shared_ptr<engine::net::tcp_listener> l){
             })
             .submit();
 }
+void
+wait_channel_proc(){
+    engine::dpdk_channel::wait_channel_msg()
+            .to_schedule(engine::reactor::_sp_global_task_center_)
+            .then([](FLOW_ARG(engine::dpdk_channel::channel_msg*)&& v){
+                ____forward_flow_monostate_exception(v);
+                engine::dpdk_channel::channel_msg* msg=std::get<engine::dpdk_channel::channel_msg*>(v);
+                std::cout<<msg->data<<std::endl;
+            })
+            .then([](FLOW_ARG()&& v){
+                wait_channel_proc();
+            })
+            .submit();
+}
+
 template <typename F> engine::reactor::flow_builder<std::result_of_t<F(FLOW_ARG()&&)>>
 keep_doing(F&& f){
     using _R_=std::result_of_t<F(FLOW_ARG()&&)>;
@@ -79,11 +120,7 @@ keep_doing(F&& f){
                 ____forward_flow_monostate_exception(v);
                 auto r=std::get<_R_>(v);
                 if(!r)
-                    return engine::reactor::make_imme_flow()
-                            .then([r=std::forward<_R_>(r)](FLOW_ARG()&& v){
-                                return r;
-                            })
-                            .to_schedule(engine::reactor::_sp_global_task_center_);
+                    return engine::reactor::make_imme_flow(r);
                 else
                     return keep_doing(f);
             });
@@ -91,49 +128,14 @@ keep_doing(F&& f){
 #pragma clang diagnostic pop
 
 int main(int argc,char* argv[]){
-    engine::reactor::make_imme_flow()
-            .then([](FLOW_ARG()&& v){
-                ____forward_flow_monostate_exception(v);
-                std::cout<<"11111"<<std::endl;
-            })
-            .then([](FLOW_ARG()&& v){
-                ____forward_flow_monostate_exception(v);
-                return engine::reactor::make_imme_flow()
-                        .then([](FLOW_ARG()&& v){
-                            ____forward_flow_monostate_exception(v);
-                            std::cout<<"BBBBBB"<<std::endl;
-                            return engine::reactor::make_imme_flow()
-                                    .then([](FLOW_ARG()&& v){
-                                        std::cout<<"CCCCCCCC"<<std::endl;
-                                        return;
-                                    });
-                        });
-            })
-            .then([](FLOW_ARG()&& v){
-                ____forward_flow_monostate_exception(v);
-                std::cout<<"AAAA"<<std::endl;
-            })
-            .submit();
-
-    int i=10;
-    keep_doing([&i](FLOW_ARG()&& v){
-        std::cout<<i<<std::endl;
-        return --i;
-    })
-            .then([](FLOW_ARG(int)&& v){
-                std::cout<<1234<<std::endl;
-            })
-            .submit();
-
-    for(int i=0;i<1000;++i)
-
-    engine::reactor::_sp_global_task_center_->run();
-
     engine::wait_engine_initialled(argc,argv)
             .then([](FLOW_ARG(std::shared_ptr<engine::glb_context>)&& a){
                 ____forward_flow_monostate_exception(a);
+
                 std::cout<<"inited"<<std::endl;
                 std::shared_ptr<engine::glb_context> _c=std::get<std::shared_ptr<engine::glb_context>>(a);
+                this_context=_c;
+                wait_channel_proc();
                 wait_connect_proc(engine::net::start_tcp_listen(_c->kqfd, 9022));
                 return _c;
             })

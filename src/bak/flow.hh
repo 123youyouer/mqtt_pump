@@ -15,7 +15,7 @@
 #include <common/ncpy_func.hh>
 #include <common/apply.hh>
 #include <common/g_define.hh>
-#include <engine/reactor/schdule.hh>
+#include <engine/reactor/schedule.hh>
 
 namespace engine{
     namespace reactor{

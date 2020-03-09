@@ -30,73 +30,86 @@ namespace mqtt{
 
     template <typename _TCP_IMPL_>
     struct operation{
-        template <typename _PKT_TYPES_>
-        static engine::reactor::flow_builder<_PKT_TYPES_>
-        wait_packet(mqtt_session<_TCP_IMPL_>&& session,_PKT_TYPES_&& pending){
-            return session._inner_data_->inner_tcp.wait_packet(TIMEOUT_MS,pending.remaining_bytes())
-                    .then([session=std::forward<mqtt_session<_TCP_IMPL_>>(session),pending=std::forward<_PKT_TYPES_>(pending)](FLOW_ARG(std::variant<int,common::ringbuffer*>)&& v)mutable{
+        template <typename ..._T_>
+        ALWAYS_INLINE static void
+        ____throw_timeout(std::variant<int,_T_...>& v){
+            switch (v.index()){
+                case 0:
+                    throw std::logic_error("timeout");
+                default:
+                    return;
+            }
+        }
+        static auto
+        wait_command(mqtt_session<_TCP_IMPL_>&& session){
+            return session._inner_data_->inner_tcp.wait_packet(TIMEOUT_MS,1)
+                    .then([](FLOW_ARG(std::variant<int,common::ringbuffer*>)&& v)mutable{
                         ____forward_flow_monostate_exception(v);
                         auto&& d=std::get<std::variant<int,common::ringbuffer*>>(v);
-                        switch (d.index()){
-                            case 0:
-                                session._inner_data_->inner_tcp.close();
-                                throw std::logic_error("timeout");
-                            default:
-                                auto buf=std::get<common::ringbuffer*>(d);
-                                switch (pending.build_pkt(buf)){
-                                    case -1:
-                                        session._inner_data_->inner_tcp.close();
-                                        throw std::logic_error("build_pkt mqtt_pkt_connect return -1");
-                                    case 0:
-                                        return wait_packet(std::forward<mqtt_session<_TCP_IMPL_>>(session),std::forward<_PKT_TYPES_>(pending));
-                                    default:
-                                        return engine::reactor::make_imme_flow()
-                                                .then([pkt=std::forward<_PKT_TYPES_>(pending)](FLOW_ARG()&& v){
-                                                    return std::move(pkt);
-                                                });
-                                }
-                        }
+                        ____throw_timeout(d);
+                        return std::get<common::ringbuffer*>(d)->pop_uint_8();
+                    });
+        }
+
+        static engine::reactor::flow_builder<u_int32_t>
+        wait_remaining(mqtt_session<_TCP_IMPL_>&& session,u_int32_t last,u_int32_t multiplier){
+            if(multiplier>128*128*128)
+                throw std::logic_error("error for read remaining");
+            else
+                return session._inner_data_->inner_tcp.wait_packet(TIMEOUT_MS,1)
+                        .then([session=std::forward<mqtt_session<_TCP_IMPL_>>(session),last,multiplier](FLOW_ARG(std::variant<int,common::ringbuffer*>)&& v)mutable{
+                            ____forward_flow_monostate_exception(v);
+                            auto&& d=std::get<std::variant<int,common::ringbuffer*>>(v);
+                            ____throw_timeout(d);
+                            u_int32_t u=std::get<common::ringbuffer*>(d)->pop_uint_8();
+                            u_int32_t r=last+((u&0b01111111)*multiplier);
+                            if((u&0b10000000)!=0)
+                                return wait_remaining(std::forward<mqtt_session<_TCP_IMPL_>>(session),last,multiplier*128);
+                            else
+                                return engine::reactor::make_imme_flow(std::forward<u_int32_t>(r));
+                        });
+        }
+        static auto
+        wait_packet(mqtt_session<_TCP_IMPL_>&& session){
+            return wait_command(std::forward<mqtt_session<_TCP_IMPL_>>(session))
+                    .then([session=std::forward<mqtt_session<_TCP_IMPL_>>(session)](FLOW_ARG(u_int8_t)&& v)mutable{
+                        ____forward_flow_monostate_exception(v);
+                        return wait_remaining(std::forward<mqtt_session<_TCP_IMPL_>>(session),0,0)
+                                .then([session=std::forward<mqtt_session<_TCP_IMPL_>>(session),cmd=std::get<u_int8_t>(v)](FLOW_ARG(u_int32_t)&& v)mutable{
+                                    ____forward_flow_monostate_exception(v);
+                                    u_int32_t remaining=std::get<u_int32_t>(v);
+                                    return session._inner_data_->inner_tcp.wait_packet(TIMEOUT_MS,remaining)
+                                            .then([cmd,remaining](FLOW_ARG(std::variant<int,common::ringbuffer*>)&& v){
+                                                ____forward_flow_monostate_exception(v);
+                                                auto&& d=std::get<std::variant<int,common::ringbuffer*>>(v);
+                                                ____throw_timeout(d);
+                                                return std::make_tuple(cmd,remaining,std::get<common::ringbuffer*>(d));
+                                            });
+                                });
                     });
         }
         static void
         loop_session(mqtt_session<_TCP_IMPL_>&& session){
-            session._inner_data_->inner_tcp.wait_packet(TIMEOUT_MS,2)
-                    .then([session=std::forward<mqtt_session<_TCP_IMPL_>>(session)](FLOW_ARG(std::variant<int,common::ringbuffer*>)&& v)mutable{
+            wait_packet(std::forward<mqtt_session<_TCP_IMPL_>>(session))
+                    .then([session=std::forward<mqtt_session<_TCP_IMPL_>>(session)](FLOW_ARG(std::tuple<u_int8_t,u_int32_t,common::ringbuffer*>)&& v)mutable{
                         ____forward_flow_monostate_exception(v);
-                        auto&& d=std::get<std::variant<int,common::ringbuffer*>>(v);
-                        switch (d.index()){
-                            case 0:
-                                session._inner_data_->inner_tcp.close();
-                                throw std::logic_error("timeout");
-                            default:
-                                auto buf=std::get<common::ringbuffer*>(d);
-                                switch (mqtt_command_type(buf->pop_uint_8()&0xF0)){
-                                    case mqtt_command_type::connect:
-                                        throw std::logic_error("re connect");
-                                    case mqtt_command_type::pingreq:
-                                        wait_packet(std::forward<mqtt_session<_TCP_IMPL_>>(session),mqtt_pkt_pingreq())
-                                                .then([](FLOW_ARG(mqtt_pkt_pingreq)&& v){
-                                                    ____forward_flow_monostate_exception(v);
-                                                    mqtt_pkt_pingreq pkt=std::get<mqtt_pkt_pingreq>(v);
-                                                })
-                                                .submit();
-                                        return;
-                                    default:
-                                        throw std::logic_error("unknown command type");
-                                }
-                        }
-                    })
-                    .then([session=std::forward<mqtt_session<_TCP_IMPL_>>(session)](FLOW_ARG()&& v)mutable{
-                        switch (v.index()){
-                            case 0:
+                        auto [cmd,remaining,payload]=std::get<std::tuple<u_int8_t,u_int32_t,common::ringbuffer*>>(v);
+                        switch (mqtt_command_type(cmd&0xF0)){
+                            case mqtt_command_type::connect:
+                                throw std::logic_error("re-connect");
+                            case mqtt_command_type::pingreq:
                                 loop_session(std::forward<mqtt_session<_TCP_IMPL_>>(session));
                             default:
-                                try {
-                                    std::rethrow_exception(std::get<std::exception_ptr>(v));
-                                }
-                                catch (...){
-
-                                }
+                                throw std::logic_error("unknown command type");
+                        }
+                    })
+                    .then([session=std::forward<mqtt_session<_TCP_IMPL_>>(session)](FLOW_ARG()&& v){
+                        switch (v.index()){
+                            case 0:
+                                return;
+                            default:
+                                session._inner_data_->inner_tcp.close();
+                                return;
                         }
                     })
                     .submit();
@@ -104,22 +117,15 @@ namespace mqtt{
 
         static engine::reactor::flow_builder<mqtt_pkt_connect>
         wait_connected(mqtt_session<_TCP_IMPL_>&& session){
-            return session._inner_data_->inner_tcp.wait_packet(TIMEOUT_MS,2)
-                    .then([session=std::forward<mqtt_session<_TCP_IMPL_>>(session)](FLOW_ARG(std::variant<int,common::ringbuffer*>)&& v)mutable{
+            return wait_packet(std::forward<mqtt_session<_TCP_IMPL_>>(session))
+                    .then([session=std::forward<mqtt_session<_TCP_IMPL_>>(session)](FLOW_ARG(std::tuple<u_int8_t,u_int32_t,common::ringbuffer*>)&& v){
                         ____forward_flow_monostate_exception(v);
-                        auto&& d=std::get<std::variant<int,common::ringbuffer*>>(v);
-                        switch (d.index()){
-                            case 0:
-                                session._inner_data_->inner_tcp.close();
-                                throw std::logic_error("timeout");
+                        auto [cmd,remaining,payload]=std::get<std::tuple<u_int8_t,u_int32_t,common::ringbuffer*>>(v);
+                        switch (mqtt_command_type(cmd&0xF0)){
+                            case mqtt_command_type::connect:
+                                return mqtt_pkt_connect(remaining,payload);
                             default:
-                                auto buf=std::get<common::ringbuffer*>(d);
-                                switch (mqtt_command_type(buf->pop_uint_8()&0xF0)){
-                                    case mqtt_command_type::connect:
-                                        return wait_packet(std::forward<mqtt_session<_TCP_IMPL_>>(session),mqtt_pkt_connect());
-                                    default:
-                                        throw std::logic_error("unconnected");
-                                }
+                                throw std::logic_error("un connected!!");
                         }
                     });
         }
@@ -131,8 +137,14 @@ namespace mqtt{
                         handle_connect(std::get<mqtt_pkt_connect>(v));
                         loop_session(std::forward<mqtt_session<_TCP_IMPL_>>(session));
                     })
-                    .then([](FLOW_ARG()&& v){
-                        return;
+                    .then([session=std::forward<mqtt_session<_TCP_IMPL_>>(session)](FLOW_ARG()&& v)mutable{
+                        switch (v.index()){
+                            case 0:
+                                return;
+                            default:
+                                session._inner_data_->inner_tcp.close();
+                                return;
+                        }
                     })
                     .submit();
         }

@@ -55,14 +55,27 @@ namespace common {
         const_iterator cend() const noexcept;
 
 
+        inline void pop_bytes(u_int8_t* out,size_t len){
+            std::memcpy(out,read_head(),len);
+            consume(len);
+        }
+
+        inline void pop_string(std::string& s){
+            u_int16_t l=0;
+            pop_uint_16(l);
+            s.resize(l+1);
+            pop_bytes(s.c_str(),l);
+            s[l]=0;
+        }
+        inline void pop_uint_16(uint16_t& v){
+            pop_bytes((u_int8_t*)(&v),2);
+        }
         inline void pop_uint_8(uint8_t& v){
-            std::memcpy(&v,read_head(),1);
-            consume(1);
+            pop_bytes((u_int8_t*)(&v),1);
         }
         inline uint8_t pop_uint_8(){
             uint8_t v;
-            std::memcpy(&v,read_head(),1);
-            consume(1);
+            pop_bytes((u_int8_t*)(&v),1);
             return v;
         }
 

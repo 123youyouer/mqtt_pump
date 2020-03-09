@@ -23,7 +23,7 @@
         为了适应DPDK,项目改为多进程方式实现,基于DPDK的实现源码放入engine下,
         原PUMP目录下是基于传统epoll的代码
         
-        目前的开发目标是基于engine实现20000K QPS的 MQTT SERVER
+        目前的开发目标是基于engine实现 MQTT SERVER
    
 ---例子
 ```cpp

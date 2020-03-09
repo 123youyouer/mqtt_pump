@@ -15,7 +15,7 @@
 #include <common/ncpy_func.hh>
 #include <common/apply.hh>
 #include <common/g_define.hh>
-#include <engine/reactor/schdule.hh>
+#include <engine/reactor/schedule.hh>
 
 namespace engine::reactor{
     namespace bha=boost::hana;
@@ -397,6 +397,19 @@ namespace engine::reactor{
     flow_builder<>
     make_imme_flow(){
         return flow_builder<>::at_schedule(_sp_immediate_runner_);
+    }
+    template <typename _A_>
+    flow_builder<_A_>
+    make_imme_flow(_A_&& a){
+        return flow_builder<_A_>::at_schedule
+                (
+                        [a=std::forward<_A_>(a)](std::shared_ptr<flow_implent<_A_>> f)mutable{
+                            _sp_immediate_runner_->schedule([f,a=std::forward<_A_>(a)](FLOW_ARG()&& v){
+                                f->trigge(FLOW_ARG(_A_)(a));
+                            });
+                        },
+                        _sp_immediate_runner_
+                );
     }
 }
 #endif //PROJECT_FLOW_HH

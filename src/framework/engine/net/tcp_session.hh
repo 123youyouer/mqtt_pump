@@ -14,7 +14,7 @@
 #include <common/packet_buffer.hh>
 #include <common/ncpy_func.hh>
 #include <engine/reactor/flow.hh>
-#include <engine/reactor/schdule.hh>
+#include <engine/reactor/schedule.hh>
 #include <engine/timer/timer_set.hh>
 
 namespace engine::net{
@@ -275,10 +275,7 @@ namespace engine::net{
                         );
             }
             else{
-                return er::make_imme_flow()
-                        .then([_data=this->_data](FLOW_ARG()&& a){
-                            return std::variant<int,common::ringbuffer*>(&_data->_recv_buf);
-                        });
+                return er::make_imme_flow(std::variant<int,common::ringbuffer*>(&_data->_recv_buf));
             }
         }
         ALWAYS_INLINE reactor::flow_builder<send_proxy>

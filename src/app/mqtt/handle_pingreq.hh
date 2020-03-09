@@ -9,15 +9,9 @@
 
 namespace mqtt{
     struct mqtt_pkt_pingreq{
-        int from_buf(common::ringbuffer*){
-            return 0;
-        }
-        size_t remaining_bytes(){
-            return 10;
-        }
-        int build_pkt(common::ringbuffer*){
-            return 1;
-        }
+        struct _inner_data{
+
+        };
     };
     auto
     handle_pingreq(){}
