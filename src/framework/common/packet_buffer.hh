@@ -64,7 +64,7 @@ namespace common {
             u_int16_t l=0;
             pop_uint_16(l);
             s.resize(l+1);
-            pop_bytes(s.c_str(),l);
+            pop_bytes(reinterpret_cast<u_int8_t*>(s.data()),l);
             s[l]=0;
         }
         inline void pop_uint_16(uint16_t& v){

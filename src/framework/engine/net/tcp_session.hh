@@ -278,7 +278,7 @@ namespace engine::net{
                 return er::make_imme_flow(std::variant<int,common::ringbuffer*>(&_data->_recv_buf));
             }
         }
-        ALWAYS_INLINE reactor::flow_builder<send_proxy>
+        ALWAYS_INLINE reactor::flow_builder<>
         send_packet(send_proxy&& pxy){
             return er::flow_builder<send_proxy>::at_schedule
                     (
@@ -292,7 +292,10 @@ namespace engine::net{
                                         );
                             },
                             er::_sp_immediate_runner_
-                    );
+                    )
+                    .then([](FLOW_ARG(send_proxy)&& v){
+                        ____forward_flow_monostate_exception(v);
+                    });
         }
         ALWAYS_INLINE auto
         send_packet(char* buf,size_t len){

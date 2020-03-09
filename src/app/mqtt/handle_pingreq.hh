@@ -8,12 +8,10 @@
 #include "mqtt_packet.hh"
 
 namespace mqtt{
-    struct mqtt_pkt_pingreq{
-        struct _inner_data{
-
-        };
-    };
+    template <typename _SESSION_>
     auto
-    handle_pingreq(){}
+    pong(_SESSION_&& session){
+
+    }
 }
 #endif //PUMP_HANDLE_PINGREQ_HH

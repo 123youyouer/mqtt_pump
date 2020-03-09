@@ -8,8 +8,11 @@
 #include <engine/reactor/flow.hh>
 #include <engine/net/tcp_listener.hh>
 #include <engine/engine.hh>
+#include <engine/data/cahce.hh>
 #include <common/unique_func.hh>
 #include "mqtt_session.hh"
+#include "mqtt_proc.hh"
+#include "mqtt_cache.hh"
 
 #pragma clang diagnostic push
 #pragma ide diagnostic ignored "InfiniteRecursion"
@@ -31,7 +34,7 @@ echo_proc(engine::net::tcp_session&& session,int timeout){
                         sprintf(sz,"time out");
                         s.send_packet(sz,10)
                                 .to_schedule(engine::reactor::_sp_global_task_center_)
-                                .then([s=std::forward<engine::net::tcp_session>(s),sz](FLOW_ARG(engine::net::send_proxy)&& v)mutable{
+                                .then([s=std::forward<engine::net::tcp_session>(s),sz](FLOW_ARG()&& v)mutable{
                                     ____forward_flow_monostate_exception(v);
                                     delete[] sz;
                                     s._data->close();
@@ -49,7 +52,7 @@ echo_proc(engine::net::tcp_session&& session,int timeout){
                         std::cout<<sz<<std::endl;
                         s.send_packet(sz,l)
                                 .to_schedule(engine::reactor::_sp_global_task_center_)
-                                .then([sz](FLOW_ARG(engine::net::send_proxy)&& v)mutable{
+                                .then([sz](FLOW_ARG()&& v)mutable{
                                     ____forward_flow_monostate_exception(v);
                                     delete[] sz;
                                 })
@@ -91,7 +94,7 @@ wait_connect_proc(std::shared_ptr<engine::net::tcp_listener> l){
                 ____forward_flow_monostate_exception(v);
                 std::cout<<"new connection"<<std::endl;
                 auto&& s=std::get<engine::net::tcp_session>(v);
-                mqtt::operation<engine::net::tcp_session>::mqtt_session_proc(std::forward<engine::net::tcp_session>(s));
+                mqtt::mqtt_proc<engine::net::tcp_session>::mqtt_session_proc(std::forward<engine::net::tcp_session>(s));
                 wait_connect_proc(l);
             })
             .submit();
