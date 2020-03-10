@@ -13,6 +13,7 @@
 #include "mqtt_session.hh"
 #include "mqtt_proc.hh"
 #include "mqtt_cache.hh"
+#include <engine/reactor/keep_doing.hh>
 
 #pragma clang diagnostic push
 #pragma ide diagnostic ignored "InfiniteRecursion"
@@ -45,21 +46,6 @@ wait_channel_proc(){
                 wait_channel_proc();
             })
             .submit();
-}
-
-template <typename F> engine::reactor::flow_builder<std::result_of_t<F(FLOW_ARG()&&)>>
-keep_doing(F&& f){
-    using _R_=std::result_of_t<F(FLOW_ARG()&&)>;
-    return engine::reactor::make_task_flow()
-            .then(std::forward<F>(f))
-            .then([f=std::forward<F>(f)](FLOW_ARG(_R_)&& v){
-                ____forward_flow_monostate_exception(v);
-                auto r=std::get<_R_>(v);
-                if(!r)
-                    return engine::reactor::make_imme_flow(r);
-                else
-                    return keep_doing(f);
-            });
 }
 #pragma clang diagnostic pop
 
