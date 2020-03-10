@@ -27,6 +27,7 @@
    
 ---例子
 ```cpp
+void 
 echo_proc(engine::net::tcp_session&& session,int timeout){
     session.wait_packet(timeout)
             .to_schedule(engine::reactor::_sp_global_task_center_)
@@ -109,7 +110,8 @@ wait_connect_proc(std::shared_ptr<engine::net::tcp_listener> l){
             .submit();
 }
 
-int main(int argc, char * argv[]){
+int 
+main(int argc, char * argv[]){
     engine::wait_engine_initialled(argc,argv)
             .then([](FLOW_ARG(std::shared_ptr<engine::glb_context>)&& a){
                 ____forward_flow_monostate_exception(a);
