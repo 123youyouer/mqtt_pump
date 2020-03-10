@@ -8,10 +8,10 @@
 
 #include <fcntl.h>
 #include <libaio.h>
-#include <pump/hw/cpu.hh>
+#include "../hw/cpu.hh"
 #include <sys/eventfd.h>
-#include <pump/poller/poller.hh>
-#include <pump/reactor/flow.hh>
+#include "../poller/poller.hh"
+#include "../reactor/flow.hh"
 #include <moodycamel/concurrentqueue.h>
 #include <variant>
 #include <common/ncpy_func.hh>

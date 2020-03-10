@@ -6,8 +6,8 @@
 #define PROJECT_GLOBAL_TASK_SCHEDULE_CENTER_HH
 
 #include <common/g_define.hh>
-#include <pump/reactor/task.hh>
-#include <pump/hw/cpu.hh>
+#include "task.hh"
+#include "../hw/cpu.hh"
 namespace reactor{
 
     template <typename _TASK_TYPE>

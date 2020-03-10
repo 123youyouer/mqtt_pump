@@ -5,5 +5,5 @@
 #ifndef PROJECT_FMT_HH
 #define PROJECT_FMT_HH
 
-#include <pump/logger/fmt/format.cc>
+#include "format.cc"
 #endif //PROJECT_FMT_HH

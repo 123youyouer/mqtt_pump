@@ -6,7 +6,7 @@
 #define CPPMQ_CPU_HH
 
 #include <hwloc.h>
-#include <pump/utils/defer.hh>
+#include "../utils/defer.hh"
 #include <iostream>
 namespace hw{
     enum class cpu_core{

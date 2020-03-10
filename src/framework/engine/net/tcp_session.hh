@@ -22,14 +22,14 @@ namespace engine::net{
     namespace er=engine::reactor;
     struct send_proxy:boost::noncopyable{
         struct data{
-            char*   _buf;
+            const char*   _buf;
             size_t  _len;
             size_t  _cur;
         };
         std::shared_ptr<data> _data;
         send_proxy()= delete;
         explicit
-        send_proxy(char* buf,size_t len):_data(std::make_shared<data>()){
+        send_proxy(const char* buf,size_t len):_data(std::make_shared<data>()){
             _data->_cur=0;
             _data->_buf=buf;
             _data->_len=len;
@@ -44,25 +44,30 @@ namespace engine::net{
         send_proxy(send_proxy&& o)noexcept{
             _data=o._data;
         }
-        send_proxy& operator=(send_proxy&& x) noexcept {
+        send_proxy&
+        operator=(send_proxy&& x) noexcept {
             if (this != &x) {
                 this->_data=x._data;
             }
             return *this;
         }
-        const char*
+        ALWAYS_INLINE const char*
         head(){
             return _data->_buf+_data->_cur;
         }
-        size_t
+        ALWAYS_INLINE size_t
         send_len(){
             return _data->_len>_data->_cur?_data->_len-_data->_cur:0;
         }
-        bool
+        ALWAYS_INLINE size_t
+        has_sent(){
+            return _data->_cur;
+        }
+        ALWAYS_INLINE bool
         done(){
             return _data->_len<=_data->_cur;
         }
-        void
+        ALWAYS_INLINE void
         update(size_t t){
             _data->_cur+=t;
         }
@@ -278,7 +283,7 @@ namespace engine::net{
                 return er::make_imme_flow(std::variant<int,common::ringbuffer*>(&_data->_recv_buf));
             }
         }
-        ALWAYS_INLINE reactor::flow_builder<>
+        ALWAYS_INLINE reactor::flow_builder<send_proxy>
         send_packet(send_proxy&& pxy){
             return er::flow_builder<send_proxy>::at_schedule
                     (
@@ -292,14 +297,16 @@ namespace engine::net{
                                         );
                             },
                             er::_sp_immediate_runner_
-                    )
-                    .then([](FLOW_ARG(send_proxy)&& v){
-                        ____forward_flow_monostate_exception(v);
-                    });
+                    );
         }
         ALWAYS_INLINE auto
-        send_packet(char* buf,size_t len){
-            return send_packet(send_proxy(buf,len));
+        send_packet(const char* buf,size_t len){
+            return send_packet(send_proxy(buf,len))
+                    .then([](FLOW_ARG(send_proxy)&& v){
+                        ____forward_flow_monostate_exception(v);
+                        auto&& d=std::get<send_proxy>(v);
+                        return std::make_tuple(d.head(),d.has_sent());
+                    });
         }
     };
 }

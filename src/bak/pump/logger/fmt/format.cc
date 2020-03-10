@@ -5,7 +5,7 @@
 //
 // For the license information refer to format.h.
 
-#include <pump/logger/fmt/format-inl.h>
+#include "format-inl.h"
 
 FMT_BEGIN_NAMESPACE
 namespace internal {

@@ -7,9 +7,9 @@
 
 #include <variant>
 #include <boost/noncopyable.hpp>
-#include <pump/net/listener.hh>
-#include <pump/net/packet_buffer.hh>
-#include <pump/reactor/schedule.hh>
+#include "listener.hh"
+#include "packet_buffer.hh"
+#include "../reactor/schedule.hh"
 namespace net{
     class send_cache:public boost::noncopyable{
     private:

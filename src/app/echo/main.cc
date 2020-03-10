@@ -24,7 +24,7 @@ echo_proc(engine::net::tcp_session&& session,int timeout){
                         sprintf(sz,"time out");
                         s.send_packet(sz,10)
                                 .to_schedule(engine::reactor::_sp_global_task_center_)
-                                .then([s=std::forward<engine::net::tcp_session>(s),sz](FLOW_ARG(engine::net::send_proxy)&& v)mutable{
+                                .then([s=std::forward<engine::net::tcp_session>(s),sz](FLOW_ARG(std::tuple<const char*,size_t>)&& v)mutable{
                                     delete[] sz;
                                     s._data->close();
                                 })
@@ -40,7 +40,7 @@ echo_proc(engine::net::tcp_session&& session,int timeout){
                         data->consume(l);
                         s.send_packet(sz,l)
                                 .to_schedule(engine::reactor::_sp_global_task_center_)
-                                .then([sz](FLOW_ARG(engine::net::send_proxy)&& v)mutable{
+                                .then([sz](FLOW_ARG(std::tuple<const char*,size_t>)&& v)mutable{
                                     delete[] sz;
                                 })
                                 .submit();

@@ -5,11 +5,11 @@
 #ifndef PROJECT_FLOW_HH
 #define PROJECT_FLOW_HH
 #include <boost/hana.hpp>
-#include <pump/hw/cpu.hh>
+#include "../hw/cpu.hh"
 #include <common/ncpy_func.hh>
-#include <pump/reactor/schedule.hh>
-#include <pump/reactor/flow_state.hh>
-#include <pump/reactor/flow_pool.hh>
+#include "schedule.hh"
+#include "flow_state.hh"
+#include "flow_pool.hh"
 namespace reactor{
     template <typename _A,typename _R,bool startor>
     class flow;

@@ -5,8 +5,8 @@
 #ifndef PROJECT_ECHO_SESSION_HH
 #define PROJECT_ECHO_SESSION_HH
 
-#include <pump/poller/poller.hh>
-#include <pump/net/listener.hh>
+#include "../poller/poller.hh"
+#include "listener.hh"
 
 namespace net{
     namespace echo{

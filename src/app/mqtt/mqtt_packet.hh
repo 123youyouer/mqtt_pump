@@ -178,6 +178,7 @@ namespace mqtt{
                 int l=remaining-2-topic_name.size()-2;
                 payload=new u_int8_t[l];
                 buf->pop_bytes(payload,l);
+                return true;
             }
         };
         std::shared_ptr<_inner_data> data;
@@ -215,6 +216,7 @@ namespace mqtt{
                     buf->pop_uint_8(new_info->qos);
                     topic_subscribe_infos.push_back(new_info);
                 }
+                return true;
             }
         };
 

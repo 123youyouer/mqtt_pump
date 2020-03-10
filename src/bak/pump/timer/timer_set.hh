@@ -11,10 +11,10 @@
 #include <common/ncpy_func.hh>
 #include <sys/time.h>
 #include <strings.h>
-#include <pump/hw/cpu.hh>
-#include <pump/reactor/flow.hh>
+#include "../hw/cpu.hh"
+#include "../reactor/flow.hh"
 #include <iostream>
-#include <pump/threading/threading_state.hh>
+#include "../threading/threading_state.hh"
 
 namespace timer{
     uint64_t

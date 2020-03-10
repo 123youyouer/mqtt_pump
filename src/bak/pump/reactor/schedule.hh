@@ -5,14 +5,14 @@
 #ifndef PROJECT_SCHEDULE_HH
 #define PROJECT_SCHEDULE_HH
 
-#include <pump/hw/cpu.hh>
+#include "../hw/cpu.hh"
 #include <common/ncpy_func.hh>
 #include <boost/hana.hpp>
 //#include <pump/reactor/task_channel.hh>
-#include <pump/reactor/global_task_schedule_center.hh>
-#include <pump/reactor/task.hh>
+#include "global_task_schedule_center.hh"
+#include "task.hh"
 #include <iostream>
-#include <pump/poller/poller.hh>
+#include "../poller/poller.hh"
 namespace reactor{
     struct _running_context_type_none_{};
 
