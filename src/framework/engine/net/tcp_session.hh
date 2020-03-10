@@ -308,6 +308,10 @@ namespace engine::net{
                         return std::make_tuple(d.head(),d.has_sent());
                     });
         }
+        ALWAYS_INLINE auto
+        send_packet(std::shared_ptr<char>(),size_t len){
+
+        }
     };
 }
 #endif //PROJECT_TCP_SESSION_HH

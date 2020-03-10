@@ -65,6 +65,32 @@ namespace mqtt{
             return static_cast<qos>((v & 0b00011000) >> 3);
         }
     };
+    struct mqtt_pkt_connack:boost::noncopyable{
+        struct _inner_data{
+            u_int8_t        cmd{};
+            u_int8_t        remaining{};
+            u_int8_t        acknowledge_flags{};
+            u_int8_t        return_code{};
+            _inner_data()
+            :cmd(static_cast<u_int8_t>(mqtt_command_type::connack))
+            ,remaining(0x02){
+            }
+        };
+        std::shared_ptr<_inner_data> data;
+        ALWAYS_INLINE const u_int8_t*
+        to_buf(){
+            return new u_int8_t[4]{data->cmd,data->remaining,data->acknowledge_flags,data->return_code};
+        }
+        ALWAYS_INLINE static size_t
+        len(){
+            return 4;
+        }
+        ALWAYS_INLINE static const u_int8_t*
+        make_buf(u_int8_t acknowledge_flags,u_int8_t return_code){
+            return new u_int8_t[4]{static_cast<u_int8_t>(mqtt_command_type::connack),0x02,acknowledge_flags,return_code};
+        }
+        mqtt_pkt_connack():data(std::make_shared<_inner_data>()){}
+    };
     struct mqtt_pkt_connect:boost::noncopyable{
         struct _inner_data{
             u_int8_t        cmd{};
@@ -79,7 +105,8 @@ namespace mqtt{
             std::string     username;
             u_int8_t*       passward{};
 
-            bool check_protocol_name(){
+            ALWAYS_INLINE bool
+            check_protocol_name(){
                 return protocol_name[0]== 0 &&
                        protocol_name[1]== 4 &&
                        protocol_name[2]=='M' &&
@@ -88,14 +115,22 @@ namespace mqtt{
                        protocol_name[5]=='T' ;
             }
 
-            bool check_protocol_level(){
+            ALWAYS_INLINE bool
+            check_clean_session(){
+                return (protocol_level&0x0b00000010)!=0;
+            }
+
+            ALWAYS_INLINE bool
+            check_protocol_level(){
                 return (protocol_level&0x7f)==4;
             }
-            bool check_connect_flags(){
+            ALWAYS_INLINE bool
+            check_connect_flags(){
                 return (connect_flags&0x01)!=0x00;
             }
 
-            bool read_fixed_head(common::ringbuffer* buf){
+            bool
+            read_fixed_head(common::ringbuffer* buf){
                 buf->pop_bytes(protocol_name,6);
                 if(!check_protocol_name())
                     return false;
@@ -109,7 +144,8 @@ namespace mqtt{
                 return true;
             }
 
-            bool read_payload(common::ringbuffer* buf){
+            bool
+            read_payload(common::ringbuffer* buf){
                 buf->pop_string(client_id);
                 if(connect_flags::has_will_flag(connect_flags)){
                     buf->pop_string(will_topic);
@@ -153,7 +189,6 @@ namespace mqtt{
         mqtt_pkt_connect(mqtt_pkt_connect&& o)noexcept:data(std::move(o.data)){
         }
     };
-
     struct mqtt_pkt_publish:boost::noncopyable{
         struct _inner_data{
             u_int8_t        cmd{};
@@ -193,6 +228,26 @@ namespace mqtt{
         }
     };
 
+    struct mqtt_pkt_suback{
+        struct _inner_data{
+            u_int8_t cmd{};
+            u_int8_t remaining{};
+            u_int16_t packet_id{};
+        };
+        std::shared_ptr<_inner_data> data;
+        ALWAYS_INLINE static const u_int8_t*
+        make_buf(u_int16_t packet_id){
+            u_int8_t* r=new u_int8_t[4];
+            r[0]=static_cast<u_int8_t>(mqtt_command_type::suback);
+            r[1]=0x02;
+            std::memcpy(r+2,&packet_id,2);
+            return r;
+        }
+        ALWAYS_INLINE static size_t
+        len(){
+            return 4;
+        }
+    };
     struct topic_subscribe_info{
         std::string topic;
         u_int8_t    qos{};
@@ -232,6 +287,26 @@ namespace mqtt{
         }
     };
 
+    struct mqtt_pkt_unsuback{
+        struct _inner_data{
+            u_int8_t cmd{};
+            u_int8_t remaining{};
+            u_int16_t packet_id{};
+        };
+        std::shared_ptr<_inner_data> data;
+        ALWAYS_INLINE static const u_int8_t*
+        make_buf(u_int16_t packet_id){
+            u_int8_t* r=new u_int8_t[4];
+            r[0]=static_cast<u_int8_t>(mqtt_command_type::unsuback);
+            r[1]=0x02;
+            std::memcpy(r+2,&packet_id,2);
+            return r;
+        }
+        ALWAYS_INLINE static size_t
+        len(){
+            return 4;
+        }
+    };
     struct topic_unsubscribe_info{
         std::string topic;
         u_int8_t    qos{};
@@ -268,6 +343,17 @@ namespace mqtt{
             data->from_buf(others);
         }
         mqtt_pkt_unsubscribe(mqtt_pkt_unsubscribe&& o)noexcept:data(std::move(o.data)){
+        }
+    };
+
+    struct mqtt_pkt_pong{
+        ALWAYS_INLINE static const u_int8_t*
+        make_buf(){
+            return new u_int8_t[2]{static_cast<u_int8_t>(mqtt_command_type::pingresp),0};
+        }
+        ALWAYS_INLINE static size_t
+        len(){
+            return 2;
         }
     };
 }

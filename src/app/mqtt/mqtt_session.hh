@@ -28,9 +28,13 @@ namespace mqtt{
             _inner_data_->session_info.data=pkt.data;
         }
 
-        const char*
+        ALWAYS_INLINE const char*
         get_id()const{
             return _inner_data_->session_info.data->client_id.c_str();
+        }
+        ALWAYS_INLINE bool
+        has_clean_session(){
+            return _inner_data_->session_info.data->check_clean_session();
         }
     };
 
@@ -100,7 +104,7 @@ namespace mqtt{
 
     template <typename _TCP_IMPL_>
     ALWAYS_INLINE auto
-    send_packet(mqtt_session<_TCP_IMPL_>&& session,char* buf,size_t len){
+    send_packet(mqtt_session<_TCP_IMPL_>&& session,const char* buf,size_t len){
         return session._inner_data_->inner_tcp.send_packet(buf,len);
     }
 

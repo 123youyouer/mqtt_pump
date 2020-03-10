@@ -19,14 +19,13 @@ namespace mqtt{
                 .then([session=std::forward<_SESSION_>(session)](FLOW_ARG()&& v)mutable{
                     ____forward_flow_monostate_exception(v);
                     gb_cache<const char*,_SESSION_>.push(session.get_id(),std::make_shared<_SESSION_>(std::forward<_SESSION_>(session)));
-                    char* sz=new char[4];
-                    return send_packet(std::forward<_SESSION_>(session),sz,4)
-                            .then([sz](FLOW_ARG(std::tuple<const char*,size_t>)&& v){
+                    const char* buf= reinterpret_cast<const char*>(mqtt_pkt_connack::make_buf(session.has_clean_session()?0b00000001:0,0));
+                    return send_packet(std::forward<_SESSION_>(session),buf,mqtt_pkt_connack::len())
+                            .then([buf](FLOW_ARG(std::tuple<const char*,size_t>)&& v){
+                                delete [] buf;
                                 ____forward_flow_monostate_exception(v);
-                                delete [] sz;
                             });
                 });
-
     }
 }
 #endif //PUMP_HANDLE_CONNECT_HH

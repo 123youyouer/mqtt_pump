@@ -28,17 +28,13 @@ namespace mqtt{
                             case mqtt_command_type::connect:
                                 throw std::logic_error("re-connect");
                             case mqtt_command_type::pingreq:
-                                pong(std::forward<mqtt_session<_TCP_IMPL_>>(session));
-                                break;
+                                return pong(std::forward<mqtt_session<_TCP_IMPL_>>(session));
                             case mqtt_command_type::publish:
-                                handle_publish(mqtt_pkt_publish(cmd,remaining,others));
-                                break;
+                                return handle_publish(std::forward<mqtt_session<_TCP_IMPL_>>(session),mqtt_pkt_publish(cmd,remaining,others));
                             case mqtt_command_type::subscribe:
-                                handle_subscribe(mqtt_pkt_subscribe(cmd,remaining,others));
-                                break;
+                                return handle_subscribe(std::forward<mqtt_session<_TCP_IMPL_>>(session),mqtt_pkt_subscribe(cmd,remaining,others));
                             case mqtt_command_type::unsubscribe:
-                                handle_unsubscribe(mqtt_pkt_unsubscribe(cmd,remaining,others));
-                                break;
+                                return handle_unsubscribe(std::forward<mqtt_session<_TCP_IMPL_>>(session),mqtt_pkt_unsubscribe(cmd,remaining,others));
                             default:
                                 throw std::logic_error("unknown command type");
                         }
@@ -49,7 +45,16 @@ namespace mqtt{
                                 loop_session(std::forward<mqtt_session<_TCP_IMPL_>>(session));
                                 return;
                             default:
-                                session._inner_data_->inner_tcp.close();
+                                try {
+                                    session._inner_data_->inner_tcp.close();
+                                    std::rethrow_exception(std::get<std::exception_ptr>(v));
+                                }
+                                catch (std::exception& e){
+                                    std::cout<<e.what()<<std::endl;
+                                }
+                                catch (...){
+                                    std::cout<<"unknow exception"<<std::endl;
+                                }
                                 return;
                         }
                     })
