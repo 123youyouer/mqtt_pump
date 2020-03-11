@@ -6,14 +6,16 @@
 #define PROJECT_MQTT_SESSION_H
 
 #include "mqtt_packet.hh"
-
+#include "mqtt_topic.hh"
 namespace mqtt{
     static u_int64_t TIMEOUT_MS = 10000;
+
     template <typename _TCP_>
     struct mqtt_session{
         struct data{
-            mqtt_pkt_connect session_info;
             _TCP_ inner_tcp;
+            mqtt_pkt_connect session_info;
+            std::list<subscribe_info> current_topic;
             explicit
             data(_TCP_&& tcp):inner_tcp(std::forward<_TCP_>(tcp)){}
         };

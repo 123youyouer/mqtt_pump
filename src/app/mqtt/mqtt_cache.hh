@@ -5,6 +5,7 @@
 #ifndef PUMP_MQTT_CACHE_HH
 #define PUMP_MQTT_CACHE_HH
 
+#include <list>
 #include <engine/data/cahce.hh>
 namespace mqtt{
     template <typename _K_,typename _V_>
