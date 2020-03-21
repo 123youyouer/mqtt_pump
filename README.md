@@ -28,7 +28,7 @@
         原PUMP目录下是基于传统epoll的代码
 
 
----例子
+---一个简单的基于DPDK的ECHO SERVER例子
 ```cpp
 void 
 echo_proc(engine::net::tcp_session&& session,int timeout){
