@@ -35,7 +35,7 @@ wait_connect_proc(std::shared_ptr<engine::net::tcp_listener> l){
 }
 void
 wait_channel_proc(){
-    engine::dpdk_channel::wait_channel_msg()
+    engine::dpdk_channel::recv_channel<engine::dpdk_channel::channel_msg>.wait_msg()
             .to_schedule(engine::reactor::_sp_global_task_center_)
             .then([](FLOW_ARG(engine::dpdk_channel::channel_msg*)&& v){
                 ____forward_flow_monostate_exception(v);
@@ -50,6 +50,7 @@ wait_channel_proc(){
 #pragma clang diagnostic pop
 
 int main(int argc,char* argv[]){
+
     engine::wait_engine_initialled(argc,argv)
             .then([](FLOW_ARG(std::shared_ptr<engine::glb_context>)&& a){
                 ____forward_flow_monostate_exception(a);

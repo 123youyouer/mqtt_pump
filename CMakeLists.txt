@@ -13,3 +13,4 @@ include_directories(${PROJECT_ROOT}/src/3rd)
 
 add_subdirectory(src/app/mqtt)
 add_subdirectory(src/app/echo)
+add_subdirectory(src/app/redis_agent)

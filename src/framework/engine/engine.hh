@@ -10,6 +10,9 @@
 #include <string>
 #include <boost/program_options.hpp>
 #include <boost/lexical_cast.hpp>
+#include <boost/property_tree/ptree.hpp>
+#include <boost/property_tree/json_parser.hpp>
+
 #include <f-stack/ff_api.h>
 #include <f-stack/ff_config.h>
 #include <dpdk/include/rte_ring.h>
@@ -32,8 +35,6 @@ namespace engine{
         uint64_t                         cpu_mask;
         rte_ring*                        public_ring= nullptr;
         rte_mempool*                     public_message_pool= nullptr;
-        rte_ring*                        this_ring= nullptr;
-        rte_mempool*                     this_message_pool= nullptr;
         rte_ring*                        oter_rings[128];
         rte_mempool*                     oter_message_pool[128];
         int                              kqfd;
@@ -81,6 +82,13 @@ namespace engine{
         }
     };
 
+    struct server_config{
+        std::string addr;
+        std::string netmask;
+        std::string broadcast;
+        std::string gateway;
+    };
+
     auto
     wait_engine_initialled(int argc, char* argv[]){
         //install_sigsegv_handler();
@@ -91,12 +99,18 @@ namespace engine{
                     rte_log(RTE_LOG_EMERG,RTE_LOGTYPE_USER1,"A%d",10);
                     boost::program_options::options_description arg_desc("arg");
                     arg_desc.add_options()
-                            ("conf",boost::program_options::value<std::string>()->default_value("config.ini"),"set config");
+                            ("conf,c",boost::program_options::value<std::string>()->default_value("config.ini"),"set config")
+                            ("proc-type,t",boost::program_options::value<std::string>()->default_value("auto"),"proc type,default=auto")
+                            ("proc-id,p",boost::program_options::value<std::string>()->default_value("0"),"proc id,default=0")
+                            ("proc-mask,p",boost::program_options::value<std::string>()->default_value(""),"proc mask,default=empty");
                     boost::program_options::variables_map arg_vm;
                     store(boost::program_options::command_line_parser(argc, argv).options(arg_desc).allow_unregistered().run(), arg_vm);
                     notify(arg_vm);
                     if(arg_vm.count("conf")==0)
                         throw std::logic_error("can not find config file");
+
+                    //boost::property_tree::ptree t;
+                    //boost::property_tree::read_json("/home/anyone/work/pump/src/framework/config.json",t);
 
                     boost::program_options::options_description ini_desc("ini");
                     ini_desc.add_options()
@@ -128,7 +142,7 @@ namespace engine{
                         p->public_ring=rte_ring_create(PRIMARY_RING_NAME,64,rte_socket_id(),0);
                         p->public_message_pool= rte_mempool_create(PRIMARY_RING_NAME, 1024,
                                                                     glb_msg_size, 0, 0,
-                                                                    NULL, NULL, NULL, NULL,
+                                                                    nullptr, nullptr, nullptr, nullptr,
                                                                     rte_socket_id(), 0);
                     }
                     else{
@@ -137,11 +151,11 @@ namespace engine{
                     }
                     std::string s=std::string("PUMP")+std::to_string(rte_lcore_id());
 
-                    p->this_ring=rte_ring_create(s.c_str(),128,rte_socket_id(),0);
-                    p->this_message_pool=rte_mempool_create(s.c_str(), 1024,
-                                                            glb_msg_size, 0, 0,
-                                                            NULL, NULL, NULL, NULL,
-                                                            rte_socket_id(), 0);
+                    engine::dpdk_channel::recv_channel<engine::dpdk_channel::channel_msg>.r=rte_ring_create(s.c_str(),128,rte_socket_id(),0);
+                    engine::dpdk_channel::recv_channel<engine::dpdk_channel::channel_msg>.m=rte_mempool_create(s.c_str(), 1024,
+                                                                                                               glb_msg_size, 0, 0,
+                                                                                                               nullptr, nullptr, nullptr, nullptr,
+                                                                                                               rte_socket_id(), 0);
 
                     p->kqfd=ff_kqueue();
                     return p;
@@ -196,7 +210,7 @@ namespace engine{
                     engine::timer::_sp_timer_set->handle_timeout(engine::timer::now_tick());
                     engine::reactor::_sp_global_task_center_->run();
 
-                    engine::dpdk_channel::pull_channel_msg(context->this_ring,context->this_message_pool);
+                    //engine::dpdk_channel::recv_channel<engine::dpdk_channel::channel_msg>.pull_msg();
                     f();
                     return 0;
                 },

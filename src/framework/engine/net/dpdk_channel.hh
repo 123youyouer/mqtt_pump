@@ -11,83 +11,99 @@
 
 namespace engine::dpdk_channel{
 
-    constexpr size_t channel_msg_size=1024;
-
     struct channel_msg{
         int cmd;
         int len;
         char data[];
     };
 
-    struct channel{
-        std::list<channel_msg*> waiting_msgs;
-        std::list<common::ncpy_func<void(FLOW_ARG(channel_msg*)&&)>> waiting_tasks;
-        void
-        schedule(common::ncpy_func<void(FLOW_ARG(channel_msg*)&&)>&& task){
-            waiting_tasks.emplace_back(std::forward<common::ncpy_func<void(FLOW_ARG(channel_msg*)&&)>>(task));
+    template <typename _MSG_>
+    struct out_channel{
+        rte_ring* r;
+        rte_mempool* m;
+        auto
+        push_msg(_MSG_* msg){
+            return reactor::make_imme_flow(msg)
+                    .then([this](FLOW_ARG(_MSG_*)&& v){
+                        ____forward_flow_monostate_exception(v);
+                        auto&& msg=std::get<_MSG_*>(v);
+                        void* msg0;
+                        rte_mempool_get(m,&msg0);
+                        std::memcpy(msg0,msg,sizeof(_MSG_));
+                        if(rte_ring_enqueue(r,msg0)<0)
+                            throw std::logic_error("cant push msg to channel");
+                        else
+                            return;
+                    });
         }
     };
 
-    channel recv_channel;
+    template <typename _MSG_>
+    struct in_channel{
+        rte_ring* r;
+        rte_mempool* m;
+        std::list<_MSG_*> waiting_msgs;
+        std::list<common::ncpy_func<void(FLOW_ARG(_MSG_*)&&)>> waiting_tasks;
+        void
+        schedule(common::ncpy_func<void(FLOW_ARG(_MSG_*)&&)>&& task){
+            waiting_tasks.emplace_back(std::forward<common::ncpy_func<void(FLOW_ARG(_MSG_*)&&)>>(task));
+        }
+        auto
+        push_msg(_MSG_* msg){
+            return reactor::make_imme_flow(msg)
+                    .then([this](FLOW_ARG(_MSG_*)&& v){
+                        ____forward_flow_monostate_exception(v);
+                        auto&& msg=std::get<_MSG_*>(v);
+                        void* msg0;
+                        rte_mempool_get(m,&msg0);
+                        std::memcpy(msg0,msg,sizeof(_MSG_));
+                        if(rte_ring_enqueue(r,msg0)<0)
+                            throw std::logic_error("cant push msg to channel");
+                        else
+                            return;
+                    });
+        }
+        void
+        pull_msg(){
+            void* msg0;
+            if(rte_ring_dequeue(r,&msg0)<0)
+                return;
+            auto* msg1= reinterpret_cast<channel_msg*>(new char[sizeof(_MSG_)]);
+            std::memcpy(msg1,msg0,sizeof(_MSG_));
+            rte_mempool_put(m,msg1);
+            if(!waiting_tasks.empty()){
+                auto&& v=waiting_tasks.front();
+                v(FLOW_ARG(channel_msg*)(msg1));
+                waiting_tasks.pop_front();
+            }
+            else{
+                waiting_msgs.push_back(msg1);
+            }
+        }
+        auto
+        wait_msg(){
+            if(waiting_msgs.empty()){
+                return reactor::flow_builder<channel_msg*>::at_schedule
+                        (
+                                [this](std::shared_ptr<reactor::flow_implent<channel_msg*>> sp_flow){
+                                    schedule([sp_flow](FLOW_ARG(channel_msg*)&& v){
+                                        sp_flow->trigge(std::forward<FLOW_ARG(channel_msg*)>(v));
+                                    });
+                                },
+                                reactor::_sp_immediate_runner_
+                        );
+            }
+            else{
+                channel_msg* r=waiting_msgs.front();
+                waiting_tasks.pop_front();
+                return reactor::make_imme_flow(std::forward<channel_msg*>(r));
+            }
+        }
+    };
 
-    auto
-    push_channel_msg(channel_msg* msg,rte_ring* r,rte_mempool* m){
-        return reactor::make_imme_flow()
-                .then([msg,r,m](FLOW_ARG()&& v){
-                    void* msg0;
-                    rte_mempool_get(m,&msg0);
-                    std::memcpy(msg0,msg,channel_msg_size);
-                    if(rte_ring_enqueue(r,msg0)<0)
-                        throw std::logic_error("cant push msg to channel");
-                    else
-                        return;
-                });
-    }
-
-    auto
-    pull_channel_msg(rte_ring* r,rte_mempool* m){
-        void* msg0;
-        if(rte_ring_dequeue(r,&msg0)<0)
-            return;
-        auto* msg1= reinterpret_cast<channel_msg*>(new char[channel_msg_size]);
-        std::memcpy(msg1,msg0,channel_msg_size);
-        rte_mempool_put(m,msg1);
-        if(recv_channel.waiting_tasks.empty()){
-            recv_channel.waiting_msgs.push_back(msg1);
-        }
-        else{
-            auto&& v=recv_channel.waiting_tasks.front();
-            v(FLOW_ARG(channel_msg*)(msg1));
-            recv_channel.waiting_tasks.pop_front();
-        }
-    }
-
-    auto
-    wait_channel_msg(){
-        if(recv_channel.waiting_msgs.empty()){
-            return reactor::flow_builder<channel_msg*>::at_schedule
-                    (
-                            [](std::shared_ptr<reactor::flow_implent<channel_msg*>> sp_flow){
-                                recv_channel.schedule([sp_flow](FLOW_ARG(channel_msg*)&& v){
-                                    sp_flow->trigge(std::forward<FLOW_ARG(channel_msg*)>(v));
-                                });
-                            },
-                            reactor::_sp_immediate_runner_
-                    );
-        }
-        else{
-            channel_msg* r=recv_channel.waiting_msgs.front();
-            recv_channel.waiting_tasks.pop_front();
-            return reactor::make_imme_flow(std::forward<channel_msg*>(r));
-        }
-    }
-    void
-    test(){
-        wait_channel_msg()
-                .then([](FLOW_ARG(channel_msg*)&& v){
-                    ____forward_flow_monostate_exception(v);
-                })
-                .submit();
-    }
+    template <typename _MSG_>
+    in_channel<_MSG_> recv_channel;
+    template <typename _MSG_>
+    out_channel<_MSG_> send_channel[128];
 }
 #endif //PUMP_DPDK_CHANNEL_HH

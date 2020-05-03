@@ -1,15 +1,18 @@
 //
 // Created by null on 20-2-1.
 //
-#include <string>
+
 #include <iostream>
 #include <cstring>
+#include <string>
 #include <engine/reactor/flow.hh>
 #include <engine/net/tcp_listener.hh>
+#include <engine/net/tcp_connector.hh>
 #include <engine/engine.hh>
 #include <common/unique_func.hh>
 
 #pragma clang diagnostic push
+#pragma ide diagnostic ignored "OCDFAInspection"
 #pragma ide diagnostic ignored "InfiniteRecursion"
 void
 echo_proc(engine::net::tcp_session&& session,int timeout){
@@ -100,13 +103,31 @@ int main(int argc, char * argv[]){
                 ____forward_flow_monostate_exception(a);
                 std::cout<<"inited"<<std::endl;
                 std::shared_ptr<engine::glb_context> _c=std::get<std::shared_ptr<engine::glb_context>>(a);
-                wait_connect_proc(engine::net::start_tcp_listen(_c->kqfd, 9022));
                 return _c;
             })
             .then([](FLOW_ARG(std::shared_ptr<engine::glb_context>)&& a){
                 ____forward_flow_monostate_exception(a);
+                auto _c=std::get<std::shared_ptr<engine::glb_context>>(a);
+
+                engine::net::connect(_c->kqfd,"10.0.0.107",9022,10000)
+                        .then([](FLOW_ARG(std::variant<int,engine::net::tcp_session>)&& a){
+                            ____forward_flow_monostate_exception(a);
+                            auto&& rtn=std::get<std::variant<int,engine::net::tcp_session>>(a);
+                            switch (rtn.index()){
+                                case 0:
+                                    std::cout<<"timeout"<<std::endl;
+                                    throw std::logic_error("timeout");
+                                default:
+                                    auto&& session=std::get<engine::net::tcp_session>(rtn);
+                                    char* sz=new char[10];
+                                    sprintf(sz,"time out");
+                                    return session.send_packet(sz,10);
+                            }
+                        })
+                        .submit();
+                wait_connect_proc(engine::net::start_tcp_listen(_c->kqfd, 9022));
                 engine::engine_run(
-                        std::get<std::shared_ptr<engine::glb_context>>(a),
+                        _c,
                         [](){}
                 );
             })

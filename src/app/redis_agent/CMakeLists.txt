@@ -1,4 +1,4 @@
-project(echo)
+project(redis_agent)
 
 include_directories(${PROJECT_ROOT}/src/app)
 include_directories(${PROJECT_ROOT}/src/3rd/dpdk/include)
@@ -15,8 +15,8 @@ add_compile_options(-mfma)
 #add_compile_options(-fno-elide-constructors)
 #add_compile_options(-gdwarf-2)
 
-add_executable(echo
-        main.cc)
+add_executable(redis_agent
+        main.cc command/redis_set.hh session/redis_session.hh game/game_unit.hh session/agent_session.hh resped/resp_decoder.hh)
 
 set(DPDKLIBS
         -Wl,--whole-archive
@@ -24,7 +24,7 @@ set(DPDKLIBS
         dpdk
         -Wl,--no-whole-archive)
 
-target_link_libraries(echo
+target_link_libraries(redis_agent
         boost_program_options
         ${DPDKLIBS}
         pthread

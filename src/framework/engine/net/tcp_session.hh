@@ -55,6 +55,10 @@ namespace engine::net{
         head(){
             return _data->_buf+_data->_cur;
         }
+        ALWAYS_INLINE const char*
+        buf(){
+            return _data->_buf;
+        }
         ALWAYS_INLINE size_t
         send_len(){
             return _data->_len>_data->_cur?_data->_len-_data->_cur:0;
@@ -247,7 +251,7 @@ namespace engine::net{
             return _data->close();
         }
         ALWAYS_INLINE auto
-        wait_packet(int ms,size_t len=0){
+        wait_packet(int ms=0,size_t len=0){
             if(_data->_recv_buf.empty() || _data->_recv_buf.size()<len){
                 using f_type=common::ncpy_func<void(FLOW_ARG(std::variant<int,common::ringbuffer*>))>;
                 return er::flow_builder<std::variant<int,common::ringbuffer*>>::at_schedule
@@ -271,6 +275,8 @@ namespace engine::net{
                                                 }
                                             }
                                     });
+                                    if(ms<=0)
+                                        return;
                                     engine::timer::_sp_timer_set->add_timer(ms,[ms,sp_flow](){
                                         sp_flow->trigge(FLOW_ARG(std::variant<int,common::ringbuffer*>)(
                                                 std::variant<int,common::ringbuffer*>(ms)));
@@ -305,13 +311,14 @@ namespace engine::net{
                     .then([](FLOW_ARG(send_proxy)&& v){
                         ____forward_flow_monostate_exception(v);
                         auto&& d=std::get<send_proxy>(v);
-                        return std::make_tuple(d.head(),d.has_sent());
+                        return std::make_tuple(d.buf(),d.has_sent());
                     });
         }
         ALWAYS_INLINE auto
         send_packet(std::shared_ptr<char>(),size_t len){
 
         }
+
     };
 }
 #endif //PROJECT_TCP_SESSION_HH

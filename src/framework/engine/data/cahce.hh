@@ -169,7 +169,7 @@ namespace engine::data{
         find(const cache_key<_K_>& k)noexcept{
             static auto hash_fn=[](const cache_key<_K_>& k){ return k.hash_code();};
             auto it=_store.find(k,hash_fn,compare());
-            std::variant<cache_find_error_code,std::shared_ptr<typename cache_entry<_K_,_V_>::variant_type>> res;
+            std::variant<cache_find_error_code,std::shared_ptr<_V_>> res;
             if(it==_store.end()){
                 res.template emplace<cache_find_error_code>(cache_find_error_code::cant_found);
                 return res;
