@@ -404,8 +404,8 @@ namespace engine::reactor{
         return flow_builder<_A_>::at_schedule
                 (
                         [a=std::forward<_A_>(a)](std::shared_ptr<flow_implent<_A_>> f)mutable{
-                            _sp_immediate_runner_->schedule([f,a=std::forward<_A_>(a)](FLOW_ARG()&& v){
-                                f->trigge(FLOW_ARG(_A_)(a));
+                            _sp_immediate_runner_->schedule([f,a=std::forward<_A_>(a)](FLOW_ARG()&& v)mutable{
+                                f->trigge(FLOW_ARG(_A_)(std::forward<_A_>(a)));
                             });
                         },
                         _sp_immediate_runner_

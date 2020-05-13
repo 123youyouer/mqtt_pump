@@ -290,7 +290,7 @@ namespace engine::net{
             }
         }
         ALWAYS_INLINE reactor::flow_builder<send_proxy>
-        send_packet(send_proxy&& pxy){
+        send_packet(send_proxy&& pxy, std::shared_ptr<er::flow_runner>& runner=er::_sp_immediate_runner_){
             return er::flow_builder<send_proxy>::at_schedule
                     (
                             [data=_data,_pxy=std::forward<send_proxy>(pxy)](std::shared_ptr<er::flow_implent<send_proxy>> f)mutable{
@@ -302,21 +302,17 @@ namespace engine::net{
                                                 }
                                         );
                             },
-                            er::_sp_immediate_runner_
+                            runner
                     );
         }
         ALWAYS_INLINE auto
-        send_packet(const char* buf,size_t len){
-            return send_packet(send_proxy(buf,len))
+        send_packet(const char* buf,size_t len, std::shared_ptr<er::flow_runner>& runner=er::_sp_immediate_runner_){
+            return send_packet(send_proxy(buf,len),runner)
                     .then([](FLOW_ARG(send_proxy)&& v){
                         ____forward_flow_monostate_exception(v);
                         auto&& d=std::get<send_proxy>(v);
                         return std::make_tuple(d.buf(),d.has_sent());
                     });
-        }
-        ALWAYS_INLINE auto
-        send_packet(std::shared_ptr<char>(),size_t len){
-
         }
 
     };
