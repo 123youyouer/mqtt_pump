@@ -7,7 +7,7 @@
 
 #include <gtest/gtest.h>
 #include <cstring>
-#include <redis_agent/resped/resp_reply_decoder.hh>
+#include <redis_agent/resped/resp_decoder.hh>
 
 namespace redis_agent::test{
     resp::decode::decode_state

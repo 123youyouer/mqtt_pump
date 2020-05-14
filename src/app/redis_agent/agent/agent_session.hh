@@ -7,19 +7,14 @@
 
 #include <boost/noncopyable.hpp>
 #include <engine/net/tcp_session.hh>
-#include <redis_agent/resped/resp_reply_decoder.hh>
+#include <redis_agent/resped/resp_decoder.hh>
 #include <engine/net/tcp_listener.hh>
+#include <redis_agent/command/redis_command.hh>
 
 namespace redis_agent::agent{
-    struct decode_struct:boost::noncopyable{
-        size_t  len;
-        char* buf;
-        resp::decode::decode_result res;
-        decode_struct():len(0),buf(nullptr){};
-    };
     class agent_session : boost::noncopyable{
     public:
-        using decode_type=std::unique_ptr<decode_struct>;
+        using decode_type=std::unique_ptr<command::redis_command>;
         using handle_type=common::ncpy_func<void(FLOW_ARG(decode_type)&&)>;
     private:
         struct _inner_{
@@ -31,11 +26,11 @@ namespace redis_agent::agent{
         };
         std::shared_ptr<_inner_> inner_data;
         void
-        check_and_update_command_request(common::ringbuffer* buf){
-            decode_type cmd=std::make_unique<decode_struct>();
+        decode_and_notify_command(common::ringbuffer* buf){
+            decode_type cmd=std::make_unique<command::redis_command>();
             size_t offset=0;
-            switch (resp::decode::decode(cmd->res,(const char*)buf->read_head(),offset,buf->size())){
-                case resp::decode::decode_state::st_complete:
+            switch (resp::decode(cmd->result,(const char*)buf->read_head(),offset,buf->size())){
+                case resp::decode_state::st_complete:
                     cmd->len=offset+1;
                     cmd->buf=new char[cmd->len];
                     std::memcpy(cmd->buf,(const char*)buf->read_head(),cmd->len);
@@ -48,9 +43,9 @@ namespace redis_agent::agent{
                         inner_data->waiting_handlers.pop();
                     }
                     return;
-                case resp::decode::decode_state::st_incomplete:
+                case resp::decode_state::st_incomplete:
                     return;
-                case resp::decode::decode_state::st_decode_error:
+                case resp::decode_state::st_decode_error:
                     throw std::logic_error("redis client session decode error");
             }
         }
@@ -100,7 +95,7 @@ namespace redis_agent::agent{
                         case 0:
                             throw std::logic_error("timeout");
                         default:
-                            session.check_and_update_command_request(std::get<1>(d));
+                            session.decode_and_notify_command(std::get<1>(d));
                             return;
                     }
                 })

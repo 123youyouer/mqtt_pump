@@ -22,11 +22,11 @@ set(source
         redis/redis_session.hh
         game/game_unit.hh
         agent/agent_session.hh
-        resped/resp_reply_decoder.hh)
+        resped/resp_decoder.hh)
 
 add_executable(redis_agent
         ${source}
-        main.cc resped/resp_command.hh ../../framework/common/consistent_hashing.hh redis/redis_nodes.hh)
+        main.cc resped/resp_command.hh ../../framework/common/consistent_hashing.hh redis/redis_nodes.hh command/redis_command.hh)
 
 add_executable(redis_agent_test
         ${source}

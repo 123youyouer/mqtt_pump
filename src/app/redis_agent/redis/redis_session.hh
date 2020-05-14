@@ -9,36 +9,44 @@
 #include <engine/net/tcp_connector.hh>
 #include <engine/reactor/schedule.hh>
 #include <redis_agent/resp/all.hpp>
+#include <redis_agent/command/redis_command.hh>
+
 namespace redis_agent::redis{
     struct command_res_handler{
         common::ncpy_func<bool()> available;
-        common::ncpy_func<void(FLOW_ARG(resp::result)&&)> handle;
+        common::ncpy_func<void(FLOW_ARG(std::unique_ptr<command::redis_reply>)&&)> handle;
     };
     class redis_session : boost::noncopyable{
         struct _inner_{
             engine::net::tcp_session tcp;
+            std::queue<std::unique_ptr<command::redis_reply>> waiting_replies;
             std::queue<command_res_handler> waiting_handlers;
             explicit
-            _inner_(engine::net::tcp_session&& tcp_session):tcp(std::forward<engine::net::tcp_session>(tcp_session)){
-            }
+            _inner_(engine::net::tcp_session&& tcp_session):tcp(std::forward<engine::net::tcp_session>(tcp_session)){}
         };
         std::shared_ptr<_inner_> inner_data;
         void
-        check_and_update_command_result(common::ringbuffer* buf){
-            resp::decoder dec;
-            auto res=dec.decode((const char*)buf->read_head(),buf->size());
-            switch (res.type()){
-                case resp::completed:
-                    buf->consume(res.size());
-                    if(!inner_data->waiting_handlers.empty())
-                        if(inner_data->waiting_handlers.front().available())
-                            inner_data->waiting_handlers.front().handle(FLOW_ARG(resp::result)(std::forward<resp::result>(res)));
-                    if(!inner_data->waiting_handlers.empty())
+        decode_and_update_reply(common::ringbuffer* buf){
+            auto rpl=std::make_unique<command::redis_reply>();
+            size_t offset=0;
+            switch (resp::decode(rpl->result,(const char*)buf->read_head(),offset,buf->size())){
+                case resp::decode_state::st_complete:
+                    rpl->len=offset+1;
+                    rpl->buf=new char[rpl->len];
+                    std::memcpy(rpl->buf,(const char*)buf->read_head(),rpl->len);
+                    buf->consume(offset+1);
+                    if(inner_data->waiting_handlers.empty()){
+                        inner_data->waiting_replies.emplace(rpl);
+                    }
+                    else{
+                        inner_data->waiting_handlers.front().handle
+                                (FLOW_ARG(std::unique_ptr<command::redis_reply>)(std::forward<std::unique_ptr<command::redis_reply>>(rpl)));
                         inner_data->waiting_handlers.pop();
-                    break;
-                case resp::incompleted:
+                    }
                     return;
-                case resp::error:
+                case resp::decode_state::st_incomplete:
+                    return;
+                case resp::decode_state::st_decode_error:
                     throw std::logic_error("redis client session decode error");
             }
         }
@@ -52,35 +60,35 @@ namespace redis_agent::redis{
         }
         friend void read_proc(redis_session&& session);
         friend auto send_command(redis_session&& session, const char* cmd,size_t len);
+        friend auto wait_reply(redis_session&& session);
     };
+    auto
+    wait_reply(redis_session&& session){
+        if(!session.inner_data->waiting_replies.empty()){
+            auto res=engine::reactor::make_imme_flow(std::move(session.inner_data->waiting_replies.front()));
+            session.inner_data->waiting_replies.pop();
+            return res;
+        }
+        else{
+            return engine::reactor::flow_builder<std::unique_ptr<command::redis_reply>>::at_schedule(
+                    [session=std::forward<redis_session>(session)](std::shared_ptr<engine::reactor::flow_implent<std::unique_ptr<command::redis_reply>>> sp_flow)mutable{
+                        session.inner_data->waiting_handlers.emplace(command_res_handler{
+                                [sp_flow](){ return !sp_flow->called();},
+                                [sp_flow](FLOW_ARG(std::unique_ptr<command::redis_reply>)&& v){
+                                    sp_flow->trigge(std::forward<FLOW_ARG(std::unique_ptr<command::redis_reply>)>(v));
+                                }
+                        });
+                    },
+                    engine::reactor::_sp_immediate_runner_
+            );
+        }
+    }
     auto
     send_command(redis_session&& session, const char* cmd,size_t len){
         return session.inner_data->tcp.send_packet(cmd,len)
                 .then([session=std::forward<redis_session>(session)](FLOW_ARG(std::tuple<const char*,size_t>)&& v)mutable{
                     ____forward_flow_monostate_exception(v);
-                    auto [c,l]=std::get<std::tuple<const char*,size_t>>(v);
-                    delete[] c;
-                    return engine::reactor::flow_builder<resp::result>::at_schedule(
-                            [session=std::forward<redis_session>(session)](std::shared_ptr<engine::reactor::flow_implent<resp::result>> sp_flow)mutable{
-                                session.inner_data->waiting_handlers.emplace(command_res_handler{
-                                        [sp_flow](){ return !sp_flow->called();},
-                                        [sp_flow](FLOW_ARG(resp::result)&& v){
-                                            switch (v.index()){
-                                                case 0:
-                                                    sp_flow->trigge(FLOW_ARG(resp::result)(std::get<0>(v)));
-                                                    return;
-                                                case 1:
-                                                    sp_flow->trigge(FLOW_ARG(resp::result)(std::get<1>(v)));
-                                                    return;
-                                                default:
-                                                    sp_flow->trigge(FLOW_ARG(resp::result)(std::get<2>(v)));
-                                                    return;
-                                            }
-                                        }
-                                });
-                            },
-                            engine::reactor::_sp_immediate_runner_
-                    );
+                    return wait_reply(std::forward<redis_session>(session));
                 });
     }
     void
@@ -93,7 +101,7 @@ namespace redis_agent::redis{
                         case 0:
                             throw std::logic_error("timeout");
                         default:
-                            session.check_and_update_command_result(std::get<1>(d));
+                            session.decode_and_update_reply(std::get<1>(d));
                             return;
                     }
                 })

@@ -3,8 +3,8 @@
 // Created by root on 2020/5/1.
 //
 
-#ifndef PUMP_RESP_REPLY_DECODER_HH
-#define PUMP_RESP_REPLY_DECODER_HH
+#ifndef PUMP_RESP_DECODER_HH
+#define PUMP_RESP_DECODER_HH
 
 #include <cstddef>
 #include <stdexcept>
@@ -12,7 +12,7 @@
 #include <vector>
 #include <boost/core/noncopyable.hpp>
 
-namespace resp::decode{
+namespace redis_agent::resp{
     static const char reply_string = '+';
     static const char reply_error = '-';
     static const char reply_integer = ':';
@@ -358,4 +358,4 @@ namespace resp::decode{
         }
     }
 }
-#endif //PUMP_RESP_REPLY_DECODER_HH
+#endif //PUMP_RESP_DECODER_HH

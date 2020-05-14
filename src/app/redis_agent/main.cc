@@ -10,16 +10,19 @@
 #include <redis_agent/redis/redis_nodes.hh>
 namespace redis_agent{
     void redis_command_agent_proc(agent::agent_session&& session){
+        std::shared_ptr<command::command_context> ctx;
         agent::wait_command(std::forward<agent::agent_session>(session))
-                .then([s=std::forward<agent::agent_session>(session)](FLOW_ARG(agent::agent_session::decode_type)&& v)mutable{
+                .then([s=std::forward<agent::agent_session>(session),ctx](FLOW_ARG(std::unique_ptr<command::redis_command>)&& v)mutable{
                     ____forward_flow_monostate_exception(v);
                     redis_command_agent_proc(std::forward<agent::agent_session>(s));
-                    auto cmd(std::forward<agent::agent_session::decode_type>(std::get<agent::agent_session::decode_type>(v)));
-                    auto node=redis::find_redis_node_by_key(resp::get_key(cmd->buf,cmd->res));
-                    return redis::send_command(std::forward<redis::redis_session>(node->second.redis_data->session),cmd->buf,cmd->len);
+                    std::swap(ctx->cmd,std::get<std::unique_ptr<command::redis_command>>(v));
+                    auto node=redis::find_redis_node_by_key(ctx->cmd->get_key_hash());
+                    return redis::send_command(std::forward<redis::redis_session>(node->second.redis_data->session),ctx->cmd->buf,ctx->cmd->len);
+
                 })
-                .then([s=std::forward<agent::agent_session>(session)](FLOW_ARG(resp::result)&& v)mutable{
+                .then([s=std::forward<agent::agent_session>(session),ctx](FLOW_ARG(std::unique_ptr<command::redis_reply>)&& v)mutable{
                     ____forward_flow_monostate_exception(v);
+                    std::swap(ctx->rpl,std::get<std::unique_ptr<command::redis_reply>>(v));
                     return agent::send_command(std::forward<agent::agent_session>(s),"",1);
                 })
                 .then([](FLOW_ARG(std::tuple<const char*,size_t>)&& v){
