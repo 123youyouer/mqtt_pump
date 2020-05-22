@@ -20,10 +20,11 @@
 #include <dpdk/include/rte_ethdev.h>
 #include <variant>
 #include <common/ncpy_func.hh>
-#include <engine/reactor/flow.hh>
-#include <engine/reactor/schedule.hh>
-#include <engine/timer/timer_set.hh>
+#include <reactor/flow.hh>
+#include <reactor/schedule.hh>
+#include <timer/timer_set.hh>
 #include <engine/net/dpdk_channel.hh>
+#include <common/cpu.hh>
 
 namespace engine{
 
@@ -75,7 +76,8 @@ namespace engine{
     template <typename ElemT>
     struct hex_to {
         ElemT value;
-        operator ElemT() const {return value;}
+        operator
+        ElemT() const {return value;}
         friend std::istream& operator>>(std::istream& in, hex_to& out) {
             in >> std::hex >> out.value;
             return in;
@@ -93,7 +95,7 @@ namespace engine{
     wait_engine_initialled(int argc, char* argv[]){
         //install_sigsegv_handler();
         //install_sigabrt_handler();
-        return engine::reactor::make_imme_flow()
+        return reactor::make_imme_flow()
                 .then([argc,argv](FLOW_ARG()&& a){
                     int v=rte_log_register("PUMP");
                     rte_log(RTE_LOG_EMERG,RTE_LOGTYPE_USER1,"A%d",10);
@@ -122,7 +124,7 @@ namespace engine{
                     std::string cpu_mask=ini_vm["dpdk.lcore_mask"].as<std::string>();
 
                     try{
-                        uint64_t r=boost::lexical_cast<hex_to<uint64_t>>(cpu_mask);
+                        uint64_t r=boost::lexical_cast<hex_to<long unsigned int>>(cpu_mask);
                         return r;
                     }
                     catch(...){
@@ -207,8 +209,8 @@ namespace engine{
                         (*static_cast<common::ncpy_func<void(const kevent&)>*>(context->events[i].udata))(context->events[i]);
                     }
 
-                    engine::timer::_sp_timer_set->handle_timeout(engine::timer::now_tick());
-                    engine::reactor::_sp_global_task_center_->run();
+                    timer::_sp_timer_set->handle_timeout(timer::now_tick());
+                    reactor::_sp_global_task_center_->run();
 
                     //engine::dpdk_channel::recv_channel<engine::dpdk_channel::channel_msg>.pull_msg();
                     f();

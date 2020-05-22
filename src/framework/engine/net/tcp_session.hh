@@ -13,13 +13,12 @@
 #include <common/g_define.hh>
 #include <common/packet_buffer.hh>
 #include <common/ncpy_func.hh>
-#include <engine/reactor/flow.hh>
-#include <engine/reactor/schedule.hh>
-#include <engine/timer/timer_set.hh>
+#include <reactor/flow.hh>
+#include <reactor/schedule.hh>
+#include <timer/timer_set.hh>
 
 namespace engine::net{
-    using namespace std::placeholders;
-    namespace er=engine::reactor;
+
     struct send_proxy:boost::noncopyable{
         struct data{
             const char*   _buf;
@@ -139,9 +138,6 @@ namespace engine::net{
                 enable_write_event(false);
             }
             void
-            last_will(){
-            }
-            void
             on_send_event(){
                 while (!waiting_send_tasks.empty()){
                     auto&& [a,f]=waiting_send_tasks.front();
@@ -207,7 +203,6 @@ namespace engine::net{
                     return;
                 EV_SET(&kevset, fd, EVFILT_WRITE,enable?EV_ENABLE:EV_DISABLE, 0, 0, &cb);
                 ff_kevent(kd, &kevset, 1, nullptr, 0, nullptr);
-                last_will();
             }
         };
         std::shared_ptr<data> _data;
@@ -254,9 +249,9 @@ namespace engine::net{
         wait_packet(int ms=0,size_t len=0){
             if(_data->_recv_buf.empty() || _data->_recv_buf.size()<len){
                 using f_type=common::ncpy_func<void(FLOW_ARG(std::variant<int,common::ringbuffer*>))>;
-                return er::flow_builder<std::variant<int,common::ringbuffer*>>::at_schedule
+                return reactor::flow_builder<std::variant<int,common::ringbuffer*>>::at_schedule
                         (
-                                [data=_data,ms,len](std::shared_ptr<er::flow_implent<std::variant<int,common::ringbuffer*>>> sp_flow){
+                                [data=_data,ms,len](std::shared_ptr<reactor::flow_implent<std::variant<int,common::ringbuffer*>>> sp_flow){
                                     data->schedule(tcp_session::recv_handler{
                                             len,
                                             [sp_flow](){ return !sp_flow->called();},
@@ -277,23 +272,23 @@ namespace engine::net{
                                     });
                                     if(ms<=0)
                                         return;
-                                    engine::timer::_sp_timer_set->add_timer(ms,[ms,sp_flow](){
+                                    timer::_sp_timer_set->add_timer(ms,[ms,sp_flow](){
                                         sp_flow->trigge(FLOW_ARG(std::variant<int,common::ringbuffer*>)(
                                                 std::variant<int,common::ringbuffer*>(ms)));
                                     });
                                 },
-                                er::_sp_immediate_runner_
+                                reactor::_sp_immediate_runner_
                         );
             }
             else{
-                return er::make_imme_flow(std::variant<int,common::ringbuffer*>(&_data->_recv_buf));
+                return reactor::make_imme_flow(std::variant<int,common::ringbuffer*>(&_data->_recv_buf));
             }
         }
         ALWAYS_INLINE reactor::flow_builder<send_proxy>
-        send_packet(send_proxy&& pxy, std::shared_ptr<er::flow_runner>& runner=er::_sp_immediate_runner_){
-            return er::flow_builder<send_proxy>::at_schedule
+        send_packet(send_proxy&& pxy, std::shared_ptr<reactor::flow_runner>& runner=reactor::_sp_immediate_runner_){
+            return reactor::flow_builder<send_proxy>::at_schedule
                     (
-                            [data=_data,_pxy=std::forward<send_proxy>(pxy)](std::shared_ptr<er::flow_implent<send_proxy>> f)mutable{
+                            [data=_data,_pxy=std::forward<send_proxy>(pxy)](std::shared_ptr<reactor::flow_implent<send_proxy>> f)mutable{
                                 data->schedule
                                         (
                                                 std::forward<send_proxy>(_pxy),
@@ -306,7 +301,7 @@ namespace engine::net{
                     );
         }
         ALWAYS_INLINE auto
-        send_packet(const char* buf,size_t len, std::shared_ptr<er::flow_runner>& runner=er::_sp_immediate_runner_){
+        send_packet(const char* buf,size_t len, std::shared_ptr<reactor::flow_runner>& runner=reactor::_sp_immediate_runner_){
             return send_packet(send_proxy(buf,len),runner)
                     .then([](FLOW_ARG(send_proxy)&& v){
                         ____forward_flow_monostate_exception(v);

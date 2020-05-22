@@ -5,11 +5,14 @@
 #include <iostream>
 #include <cstring>
 #include <string>
-#include <engine/reactor/flow.hh>
+#include <variant>
+#include <reactor/flow.hh>
+#include <reactor/schedule.hh>
 #include <engine/net/tcp_listener.hh>
 #include <engine/net/tcp_connector.hh>
 #include <engine/engine.hh>
 #include <common/unique_func.hh>
+#include <pump/pump.hh>
 
 #pragma clang diagnostic push
 #pragma ide diagnostic ignored "OCDFAInspection"
@@ -17,7 +20,7 @@
 void
 echo_proc(engine::net::tcp_session&& session,int timeout){
     session.wait_packet(timeout)
-            .to_schedule(engine::reactor::_sp_global_task_center_)
+            .to_schedule(reactor::_sp_global_task_center_)
             .then([s=std::forward<engine::net::tcp_session>(session),timeout](FLOW_ARG(std::variant<int,common::ringbuffer*>)&& v)mutable{
                 ____forward_flow_monostate_exception(v);
                 std::variant<int,common::ringbuffer*> d=std::get<2>(v);
@@ -29,7 +32,7 @@ echo_proc(engine::net::tcp_session&& session,int timeout){
                         sprintf(sz,"time out");
                         return s.send_packet(sz,10);
                     }
-                    case 1:
+                    default:
                     {
                         common::ringbuffer* data=std::get<common::ringbuffer*>(d);
                         size_t l=data->size();
@@ -70,11 +73,10 @@ echo_proc(engine::net::tcp_session&& session,int timeout){
 void
 wait_connect_proc(std::shared_ptr<engine::net::tcp_listener> l){
     engine::net::wait_connect(l)
-            .to_schedule(engine::reactor::_sp_global_task_center_)
+            .to_schedule(reactor::_sp_global_task_center_)
             .then([l](FLOW_ARG(engine::net::tcp_session)&& v){
                 ____forward_flow_monostate_exception(v);
                 std::cout<<"new connection"<<std::endl;
-                auto&& s=std::get<engine::net::tcp_session>(v);
                 echo_proc(std::forward<engine::net::tcp_session>(std::get<engine::net::tcp_session>(v)),20000);
             })
             .then([l](FLOW_ARG()&& v){
@@ -96,8 +98,8 @@ wait_connect_proc(std::shared_ptr<engine::net::tcp_listener> l){
             })
             .submit();
 }
-
 int main(int argc, char * argv[]){
+    pump::test_pump();
     engine::wait_engine_initialled(argc,argv)
             .then([](FLOW_ARG(std::shared_ptr<engine::glb_context>)&& a){
                 ____forward_flow_monostate_exception(a);
@@ -107,7 +109,9 @@ int main(int argc, char * argv[]){
             })
             .then([](FLOW_ARG(std::shared_ptr<engine::glb_context>)&& a){
                 ____forward_flow_monostate_exception(a);
+
                 auto _c=std::get<std::shared_ptr<engine::glb_context>>(a);
+                //auto _c=std::get<std::shared_ptr<engine::glb_context>>(a);
 
                 engine::net::connect(_c->kqfd,"10.0.0.107",9022,10000)
                         .then([](FLOW_ARG(std::variant<int,engine::net::tcp_session>)&& a){

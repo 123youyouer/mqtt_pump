@@ -8,7 +8,8 @@
 #include <hwloc.h>
 #include <iostream>
 #include <common/defer.hh>
-namespace engine::hw{
+#include <common/g_define.hh>
+namespace common{
     enum class cpu_core{
         _01=0,
         _02=1,
@@ -25,7 +26,8 @@ namespace engine::hw{
         _ANY=2000
     };
 
-    int nr_processing_units() {
+    int
+    nr_processing_units() {
         hwloc_topology_t topology;
         hwloc_topology_init(&topology);
         auto free_hwloc = common::defer([&] {
@@ -37,8 +39,8 @@ namespace engine::hw{
 
     uint16_t the_cpu_count= static_cast<uint16_t>(nr_processing_units());
 
-    inline
-    void pin_this_thread(unsigned int cpu_id) {
+    ALWAYS_INLINE void
+    pin_this_thread(unsigned int cpu_id) {
         cpu_set_t cs;
         CPU_ZERO(&cs);
         CPU_SET(cpu_id, &cs);
@@ -49,13 +51,14 @@ namespace engine::hw{
         catch (...){
             std::cout<<"a"<<std::endl;
         }
-
-
-
+    }
+    ALWAYS_INLINE void
+    pin_this_thread(const common::cpu_core& cpu) {
+        return pin_this_thread(static_cast<unsigned int>(cpu));
     }
 
-    inline
-    cpu_core get_thread_cpu_id(){
+    ALWAYS_INLINE cpu_core
+    get_thread_cpu_id(){
         cpu_set_t cs;
         CPU_ZERO(&cs);
         pthread_getaffinity_np(pthread_self(), sizeof(cs), &cs);
@@ -63,6 +66,7 @@ namespace engine::hw{
         for (int i = 0; i < CPU_SETSIZE; i++)
             if (CPU_ISSET(i, &cs))
                 return cpu_core(i);
+        throw std::logic_error("unknown cpu");
     }
 }
 

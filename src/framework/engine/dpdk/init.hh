@@ -7,7 +7,7 @@
 
 #include <string>
 #include <dpdk/include/rte_timer.h>
-#include <engine/hw/cpu.hh>
+#include <common/cpu.hh>
 #include <engine/dpdk/freebsd_init.hh>
 
 namespace engine::dpdk{

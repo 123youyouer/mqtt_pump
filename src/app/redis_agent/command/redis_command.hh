@@ -7,16 +7,30 @@
 
 #include <string>
 #include <redis_agent/resped/resp_decoder.hh>
+#include <redis_agent/command/redis_command_name.hh>
 
 namespace redis_agent::command{
     struct redis_command_flag{
         const static size_t write   =1;
         const static size_t has_k   =1<<1;
     };
+
+    template<typename T>
+    struct lazy_data{
+        bool loaded;
+        T t;
+    };
+
+
+
     struct redis_command{
         size_t  len;
         char* buf;
         resp::decode_result result;
+        lazy_data<redis_cmd_name> name;
+        lazy_data<std::string> str_key;
+        lazy_data<size_t> int_key;
+
         size_t flags;
         __always_inline bool
         is_write_command(){

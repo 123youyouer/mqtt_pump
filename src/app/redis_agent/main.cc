@@ -16,6 +16,12 @@ namespace redis_agent{
                     ____forward_flow_monostate_exception(v);
                     redis_command_agent_proc(std::forward<agent::agent_session>(s));
                     std::swap(ctx->cmd,std::get<std::unique_ptr<command::redis_command>>(v));
+                    if(ctx->cmd->has_key()){
+
+                    }
+                    else{
+
+                    }
                     auto node=redis::find_redis_node_by_key(ctx->cmd->get_key_hash());
                     return redis::send_command(std::forward<redis::redis_session>(node->second.redis_data->session),ctx->cmd->buf,ctx->cmd->len);
 

@@ -64,7 +64,7 @@ namespace mqtt{
     }
 
     template <typename _TCP_IMPL_>
-    engine::reactor::flow_builder<u_int32_t>
+    reactor::flow_builder<u_int32_t>
     wait_remaining(mqtt_session<_TCP_IMPL_>&& session,u_int32_t last,u_int32_t multiplier){
         if(multiplier>128*128*128)
             throw std::logic_error("error for read remaining");
@@ -79,7 +79,7 @@ namespace mqtt{
                         if((u&0b10000000)!=0)
                             return wait_remaining(std::forward<mqtt_session<_TCP_IMPL_>>(session),last,multiplier*128);
                         else
-                            return engine::reactor::make_imme_flow(std::forward<u_int32_t>(r));
+                            return reactor::make_imme_flow(std::forward<u_int32_t>(r));
                     });
     }
 

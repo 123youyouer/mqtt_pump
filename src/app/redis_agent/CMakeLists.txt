@@ -26,7 +26,7 @@ set(source
 
 add_executable(redis_agent
         ${source}
-        main.cc resped/resp_command.hh ../../framework/common/consistent_hashing.hh redis/redis_nodes.hh command/redis_command.hh)
+        main.cc resped/resp_command.hh ../../framework/common/consistent_hashing.hh redis/redis_nodes.hh command/redis_command.hh command/redis_command_name.hh)
 
 add_executable(redis_agent_test
         ${source}

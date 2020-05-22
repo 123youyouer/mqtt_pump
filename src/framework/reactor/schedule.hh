@@ -28,7 +28,8 @@ ____forward_flow_monostate_exception(const FLOW_ARG(_ARG_...)& v){
             case 1:     std::rethrow_exception(std::get<std::exception_ptr>(v));
         }
 }
-namespace engine::reactor{
+
+namespace reactor{
     class flow_runner{
     public:
         FLOW_ARG() monostate;
@@ -53,7 +54,7 @@ namespace engine::reactor{
     struct global_task_center : public flow_runner{
         std::list<common::ncpy_func<void(FLOW_ARG()&&)>> waiting_tasks;
         ALWAYS_INLINE void
-        run(){
+        run()final{
             int len=waiting_tasks.size();
             while(len>0&&!waiting_tasks.empty()){
                 len--;
@@ -72,8 +73,6 @@ namespace engine::reactor{
             waiting_tasks.emplace_back(std::forward<common::ncpy_func<void(FLOW_ARG()&&)>>(f));
         }
     };
-
-    global_task_center _global_task_center_;
     std::shared_ptr<flow_runner> _sp_global_task_center_(new global_task_center());
 }
 #endif //PROJECT_SCHDULE_HH

@@ -6,7 +6,7 @@
 #define CPPMQ_CPU_HH
 
 #include <hwloc.h>
-#include "../utils/defer.hh"
+#include <common/defer.hh>
 #include <iostream>
 namespace hw{
     enum class cpu_core{
@@ -37,6 +37,19 @@ namespace hw{
 
     int the_cpu_count=nr_processing_units();
 
+    ALWAYS_INLINE
+    void pin_this_thread(unsigned int cpu_id) {
+        cpu_set_t cs;
+        CPU_ZERO(&cs);
+        CPU_SET(cpu_id, &cs);
+        try {
+            auto t=pthread_self();
+            auto r = pthread_setaffinity_np(t, sizeof(cs), &cs);
+        }
+        catch (...){
+            std::cout<<"a"<<std::endl;
+        }
+    }
     inline
     void pin_this_thread(unsigned int cpu_id) {
         cpu_set_t cs;
@@ -49,9 +62,6 @@ namespace hw{
         catch (...){
             std::cout<<"a"<<std::endl;
         }
-
-
-
     }
 
     inline

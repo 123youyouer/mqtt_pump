@@ -8,7 +8,6 @@ include_directories(${PROJECT_ROOT}/src/3rd)
 
 link_directories(${PROJECT_ROOT}/src/3rd/dpdk)
 link_directories(${PROJECT_ROOT}/src/3rd/f-stack)
-link_directories(${PROJECT_ROOT}/src/3rd/f-stack)
 
 add_compile_options("-O0")
 add_compile_options(-mfma)
@@ -16,7 +15,7 @@ add_compile_options(-mfma)
 #add_compile_options(-gdwarf-2)
 
 add_executable(echo
-        main.cc)
+        main.cc ee.hh)
 
 set(DPDKLIBS
         -Wl,--whole-archive
@@ -25,6 +24,7 @@ set(DPDKLIBS
         -Wl,--no-whole-archive)
 
 target_link_libraries(echo
+        -lhwloc
         boost_program_options
         ${DPDKLIBS}
         pthread

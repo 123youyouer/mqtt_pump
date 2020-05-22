@@ -15,9 +15,9 @@
 #include <common/ncpy_func.hh>
 #include <common/apply.hh>
 #include <common/g_define.hh>
-#include <engine/reactor/schedule.hh>
+#include <reactor/schedule.hh>
 
-namespace engine::reactor{
+namespace reactor{
     namespace bha=boost::hana;
     template <typename ..._ARG_>
     class flow_implent;
@@ -204,18 +204,6 @@ namespace engine::reactor{
             inner_data->_value_.swap(arg);
             active_impl();
         }
-        /*
-        ALWAYS_INLINE void
-        trigge(std::exception_ptr _e){
-            if(inner_data->called)
-                return;
-            inner_data->called= true;
-            if(!inner_data->_act_func_)
-                return;
-            inner_data->_value_.template emplace<std::exception_ptr>(std::forward<std::exception_ptr>(_e));
-            active_impl();
-        }
-         */
     };
 
     template <typename ..._ARG_>
@@ -300,23 +288,6 @@ namespace engine::reactor{
                             (_impl)
                     );
         }
-        /*
-        template <typename _SUBMIT_AT_>
-        static auto
-        at_schedule(_SUBMIT_AT_&& _submit_at_,std::shared_ptr<flow_runner>& _schedule_at_){
-            auto _impl=std::make_shared<flow_implent<_ARG_...>>();
-            return flow_builder<_ARG_...>
-                    (
-                            _schedule_at_,
-                            [_submit_at_=std::forward<_SUBMIT_AT_>(_submit_at_),_impl]()mutable{
-                                _submit_at_([_impl](FLOW_ARG(_ARG_...)&& a){
-                                    _impl->trigge(std::forward<FLOW_ARG(_ARG_...)>(a));
-                                });
-                            },
-                            (_impl)
-                    );
-        };
-        */
         static constexpr auto
         at_schedule(std::shared_ptr<flow_runner>& _schedule_at_){
             return at_schedule

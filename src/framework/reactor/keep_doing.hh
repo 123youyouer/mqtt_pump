@@ -7,20 +7,20 @@
 #ifndef PUMP_KEEP_DOING_HH
 #define PUMP_KEEP_DOING_HH
 
-#include <engine/reactor/flow.hh>
+#include <reactor/flow.hh>
 
-namespace engine::reactor{
+namespace reactor{
     template <typename F>
     flow_builder<std::result_of_t<F(FLOW_ARG()&&)>>
     keep_doing(F&& f){
         using _R_=std::result_of_t<F(FLOW_ARG()&&)>;
-        return engine::reactor::make_task_flow()
+        return reactor::make_task_flow()
                 .then(std::forward<F>(f))
                 .then([f=std::forward<F>(f)](FLOW_ARG(_R_)&& v){
                     ____forward_flow_monostate_exception(v);
                     auto r=std::get<_R_>(v);
                     if(!r)
-                        return engine::reactor::make_imme_flow(r);
+                        return reactor::make_imme_flow(r);
                     else
                         return keep_doing(f);
                 });
@@ -29,13 +29,13 @@ namespace engine::reactor{
     flow_builder<std::result_of_t<F(FLOW_ARG()&&)>>
     keep_doing(F&& f,U&& util){
         using _R_=std::result_of_t<F(FLOW_ARG()&&)>;
-        return engine::reactor::make_task_flow()
+        return reactor::make_task_flow()
                 .then(std::forward<F>(f))
                 .then([f=std::forward<F>(f),u=std::forward<U>(util)](FLOW_ARG(_R_)&& v){
                     ____forward_flow_monostate_exception(v);
                     auto r=std::get<_R_>(v);
                     if(!u(r))
-                        return engine::reactor::make_imme_flow(r);
+                        return reactor::make_imme_flow(r);
                     else
                         return keep_doing(f);
                 });
